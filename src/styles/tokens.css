@@ -1,0 +1,91 @@
+:root {
+  /* Brand colors */
+  --mt-yellow: #ffd100;
+  --mt-yellow-dark: #f5b800;
+  --mt-yellow-soft: #fff8d6;
+  --mt-orange: #ff7a00;
+
+  /* Text */
+  --mt-text: #1a1a1a;
+  --mt-text-2: #4a4a4a;
+  --mt-text-3: #8a8a8a;
+  --mt-text-4: #b5b5b5;
+
+  /* Backgrounds */
+  --mt-bg: #f5f6f8;
+  --mt-bg-card: #ffffff;
+  --mt-bg-soft: #faf6e8;
+
+  /* Lines */
+  --mt-line: #ececec;
+  --mt-line-2: #f3f4f6;
+
+  /* Functional colors */
+  --mt-blue: #3b82f6;
+  --mt-blue-soft: #e8f0ff;
+  --mt-green: #10b981;
+  --mt-green-soft: #e8faf2;
+  --mt-red: #ef4444;
+  --mt-red-soft: #ffeaea;
+  --mt-purple: #8b5cf6;
+  --mt-purple-soft: #f1ebff;
+
+  /* "GO" gradient (purple→blue for 小go brand) */
+  --go-grad: linear-gradient(135deg, #7c3aed 0%, #a78bfa 50%, #60a5fa 100%);
+  --go-purple: #7c3aed;
+
+  /* Shadows */
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 4px 12px rgba(16, 24, 40, 0.06), 0 2px 6px rgba(16, 24, 40, 0.04);
+  --shadow-3: 0 12px 32px rgba(16, 24, 40, 0.1), 0 4px 8px rgba(16, 24, 40, 0.06);
+  --shadow-cta: 0 8px 24px rgba(255, 184, 0, 0.4), 0 2px 6px rgba(255, 184, 0, 0.22);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue',
+    Helvetica, 'Microsoft YaHei', Arial, sans-serif;
+  font-size: 14px;
+  color: var(--mt-text);
+  background: #2d2f36;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.01em;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  outline: none;
+  border: none;
+  background: transparent;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
