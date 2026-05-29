@@ -1,0 +1,78 @@
+/* Extra animations referenced inline */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(1.35); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* CTA bubble entry — fade in + bounce */
+@keyframes ctaBounce {
+  0%   { opacity: 0; transform: translateY(20px) scale(0.85); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.05); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Soft floating hover for CTAs */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+/* Cat character body sway for waiting page */
+@keyframes catSway {
+  0%, 100% { transform: rotate(-2deg); }
+  50%      { transform: rotate(2deg); }
+}
+
+/* Slide-up for bottom sheets */
+@keyframes sheetUp {
+  0%   { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+
+/* App-like page push transition */
+@keyframes pagePush {
+  0%   { transform: translateX(28px); opacity: 0; }
+  60%  { opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+/* Modal pop-in */
+@keyframes modalPop {
+  0%   { transform: scale(.86); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes overlayFade {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes sideMenuIn {
+  0%   { transform: translateX(100%); opacity: 0.75; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes mapPinPulse {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 8px 24px rgba(59, 130, 246, .32), 0 0 0 0 rgba(96, 165, 250, .32);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 12px 30px rgba(59, 130, 246, .38), 0 0 0 12px rgba(96, 165, 250, 0);
+  }
+}
+
+@keyframes rainDrop {
+  0% { transform: translate3d(0, -80px, 0) rotate(12deg); }
+  100% { transform: translate3d(-36px, 520px, 0) rotate(12deg); }
+}
+
+@keyframes snowFall {
+  0% { transform: translate3d(0, -40px, 0); }
+  50% { transform: translate3d(18px, 210px, 0); }
+  100% { transform: translate3d(-10px, 470px, 0); }
+}

@@ -1,0 +1,35 @@
+# ── Python ──────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# ── OS / editor ─────────────────────────────────────────
+.DS_Store
+
+# ── Secrets (never commit real keys) ────────────────────
+.env
+frontend/.env.local
+
+# Local Claude Code config — settings.local.json captures command history
+# that can include real API keys/bearer tokens, plus machine-specific paths.
+.claude/
+
+# ── Local SQLite state (regenerated at runtime) ─────────
+*.sqlite
+*.sqlite3
+*.db
+
+# ── Generated assets (poster + POI illustrations) ───────
+# Keep the directory (.gitkeep) but ignore the rendered PNG/SVG output.
+backend/static/generated/**/*.png
+backend/static/generated/**/*.svg
+
+# ── Node / Vite (frontend) ──────────────────────────────
+node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# ── Runtime logs ────────────────────────────────────────
+logs/
+*.log

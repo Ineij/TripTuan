@@ -1,0 +1,354 @@
+/* ========== Mobile frame (iPhone) ========== */
+.mobile-frame {
+  width: 390px;
+  height: 844px;
+  background: var(--mt-bg);
+  position: relative;
+  overflow: hidden;
+  border-radius: 44px;
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.45),
+    0 0 0 11px #111418,
+    0 0 0 12px #2a2f37,
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+.mobile-frame::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translate(-50%);
+  width: 118px;
+  height: 30px;
+  background: #0d0f12;
+  border-radius: 18px;
+  z-index: 100;
+}
+
+/* ========== Status bar (time + signal + battery) ========== */
+.status-bar {
+  height: 44px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 26px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--mt-text);
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+.status-bar .right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.status-bar .signal {
+  display: inline-block;
+  width: 16px;
+  height: 10px;
+  background: linear-gradient(
+    to right,
+    currentColor 25%,
+    transparent 25% 33%,
+    currentColor 33% 58%,
+    transparent 58% 66%,
+    currentColor 66% 91%,
+    transparent 91% 100%
+  );
+}
+.status-bar .battery {
+  display: inline-block;
+  width: 24px;
+  height: 12px;
+  border: 1.2px solid currentColor;
+  border-radius: 3px;
+  position: relative;
+  padding: 1px;
+}
+.status-bar .battery::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentColor;
+  border-radius: 1px;
+}
+.status-bar .battery::before {
+  content: '';
+  position: absolute;
+  right: -3.5px;
+  top: 3px;
+  width: 2px;
+  height: 5px;
+  background: currentColor;
+  border-radius: 0 1px 1px 0;
+}
+
+/* ========== Nav bar ========== */
+.nav-bar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: var(--mt-bg-card);
+  border-bottom: 1px solid var(--mt-line);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+}
+.nav-bar .back {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--mt-text);
+  border-radius: 50%;
+  background: var(--mt-bg);
+  margin-right: 4px;
+  font-weight: 500;
+}
+.nav-bar .title {
+  font-size: 17px;
+  font-weight: 600;
+  flex: 1;
+  text-align: center;
+  margin-right: 36px;
+  letter-spacing: 0.02em;
+}
+
+/* ========== Scroll area + footer ========== */
+.scroll-area {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  min-height: 0;
+}
+.scroll-area::-webkit-scrollbar {
+  width: 0;
+}
+.footer-bar {
+  flex-shrink: 0;
+  background: #fff;
+  border-top: 1px solid var(--mt-line);
+  padding: 10px 14px calc(env(safe-area-inset-bottom, 14px) + 4px);
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04);
+}
+
+/* ========== Cards & buttons ========== */
+.card {
+  background: var(--mt-bg-card);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: var(--shadow-1);
+}
+.card-lift {
+  box-shadow: var(--shadow-2);
+}
+.btn-primary {
+  background: linear-gradient(135deg, #ffd84a, #f5b800);
+  color: var(--mt-text);
+  font-weight: 700;
+  border-radius: 14px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15.5px;
+  letter-spacing: 0.03em;
+  box-shadow: var(--shadow-cta);
+  width: 100%;
+  gap: 6px;
+}
+.btn-ghost {
+  background: var(--mt-bg);
+  color: var(--mt-text-2);
+  font-weight: 500;
+  border-radius: 12px;
+  height: 44px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13.5px;
+  gap: 4px;
+  transition: background 0.15s;
+}
+.btn-ghost:hover {
+  background: #ececec;
+}
+.btn-go {
+  background: var(--go-grad);
+  color: #fff;
+  font-weight: 700;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  padding: 0 14px;
+  height: 36px;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+}
+
+/* ========== Tags ========== */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.tag-yellow { background: #fff5cc; color: #b88500; }
+.tag-blue   { background: var(--mt-blue-soft);   color: var(--mt-blue); }
+.tag-green  { background: var(--mt-green-soft);  color: var(--mt-green); }
+.tag-red    { background: var(--mt-red-soft);    color: var(--mt-red); }
+.tag-purple { background: var(--mt-purple-soft); color: var(--mt-purple); }
+.tag-gray   { background: #f0f1f3;               color: var(--mt-text-3); }
+
+/* ========== Animations ========== */
+@keyframes fadeUp {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.35s ease both; }
+
+@keyframes shimmer {
+  0%   { background-position: -300px 0; }
+  100% { background-position: 300px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #f5f6f8, #fff, #f5f6f8);
+  background-size: 600px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* ========== Misc ========== */
+.hairline {
+  height: 1px;
+  background: var(--mt-line);
+  margin: 12px 0;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* "go" round badge */
+.go-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--go-grad);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35),
+    inset 0 1px rgba(255, 255, 255, 0.5),
+    inset 0 -1px rgba(0, 0, 0, 0.1);
+  position: relative;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+}
+.go-mark::before {
+  content: '';
+  position: absolute;
+  left: 18%;
+  top: 14%;
+  width: 28%;
+  height: 22%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  filter: blur(1px);
+  pointer-events: none;
+}
+
+/* Faux photo background — for placeholder hero/cards */
+.photo-bg {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.photo-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.5) 0%, transparent 35%),
+    radial-gradient(circle at 80% 80%, rgba(0, 0, 0, 0.15) 0%, transparent 40%);
+  pointer-events: none;
+}
+.photo-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%,
+      transparent 75%, rgba(255, 255, 255, 0.04) 75%),
+    linear-gradient(45deg, rgba(0, 0, 0, 0.05) 25%, transparent 25%,
+      transparent 75%, rgba(0, 0, 0, 0.05) 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 3px 3px;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* Layout helpers */
+.h-row { display: flex; align-items: center; }
+.h-between { display: flex; align-items: center; justify-content: space-between; }
+.text-muted { color: var(--mt-text-3); }
+.text-small { font-size: 12px; }
+.text-tiny  { font-size: 11px; }
+.text-bold  { font-weight: 700; }
+
+/* Review (design feedback) page lives full screen */
+.review-page {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Section heading */
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mt-text);
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+/* "Step number" badge (1, 2, 3, ...) */
+.step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffd84a, #f5b800);
+  font-size: 12px;
+  font-weight: 800;
+  color: #1a1a1a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(245, 184, 0, 0.35);
+}
