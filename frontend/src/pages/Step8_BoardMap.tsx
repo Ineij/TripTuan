@@ -36,6 +36,38 @@ const catEmoji: Record<MapStation['cat'], string> = {
   景点: '📍', 美食: '🍜', 酒店: '🏨', 交通: '🚄',
 };
 
+function localDistanceKm(from?: MapStation, to?: MapStation): number | null {
+  if (!from || !to) return null;
+  const earthKm = 6371;
+  const toRad = (n: number) => (n * Math.PI) / 180;
+  const dLat = toRad(to.lat - from.lat);
+  const dLng = toRad(to.lng - from.lng);
+  const lat1 = toRad(from.lat);
+  const lat2 = toRad(to.lat);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function localRideQuote(scene: string, from?: MapStation, to?: MapStation) {
+  const distance = localDistanceKm(from, to);
+  if (distance == null) return null;
+  const km = Math.max(0.6, Math.round(distance * 10) / 10);
+  const base = scene === 'bj' ? 16 : 13;
+  const estimate = Math.max(18, Math.round(base + km * 5.8));
+  const etaMin = Math.max(6, Math.round((km / (km > 3 ? 20 : 12)) * 60));
+  return { km, estimate, etaMin, carType: '美团快车' };
+}
+
+function cleanCarType(value?: string) {
+  return (value || '美团快车').replace(/[（(]\s*mock\s*[）)]/ig, '').trim();
+}
+
+function formatKm(value?: number) {
+  if (value == null || Number.isNaN(value)) return '--';
+  return value.toFixed(value >= 10 ? 0 : 1);
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function Step8_BoardMap() {
@@ -150,9 +182,14 @@ export default function Step8_BoardMap() {
   const cur = filtered[activeIdx];
   const next = filtered[activeIdx + 1];
   const selectedId = rawActiveIdx >= 0 ? activeId : cur?.id ?? null;
+  const fallbackRideQuote = localRideQuote(scene, cur, next);
+  const displayRideQuote = rideQuote
+    ? { ...rideQuote, carType: cleanCarType(rideQuote.carType) }
+    : fallbackRideQuote;
 
   useEffect(() => {
     if (!orderId || !cur || !next) { setRideQuote(null); return; }
+    setRideQuote(null);
     callRide(orderId, cur.name, next.name)
       .then((q) => setRideQuote(q))
       .catch(() => setRideQuote(null));
@@ -384,9 +421,10 @@ export default function Step8_BoardMap() {
             <div className="card" style={{ background: 'linear-gradient(135deg,#fff8d6,#ffe7a3)', marginBottom: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>🚕 下一段建议</div>
               <div className="text-small text-muted" style={{ marginBottom: 10, lineHeight: 1.6 }}>
-                {cur?.name} → {next.name}，约 {rideQuote?.km ?? (scene === 'bj' ? '4.2' : '1.8')} km，
-                打车约 ¥{rideQuote?.estimate ?? (scene === 'bj' ? '42' : '28')}
-                {rideQuote ? ` · ${rideQuote.carType}` : ''}
+                {cur?.name} → {next.name}，约 {formatKm(displayRideQuote?.km)} km，
+                打车约 ¥{displayRideQuote?.estimate ?? '--'}
+                {displayRideQuote?.etaMin ? ` · 约 ${displayRideQuote.etaMin} 分钟` : ''}
+                {displayRideQuote?.carType ? ` · ${displayRideQuote.carType}` : ''}
               </div>
               <button className="btn-go" style={{ width: '100%', height: 36 }} onClick={() => activateStation(next.id)}>
                 🚕 出发前往下一站

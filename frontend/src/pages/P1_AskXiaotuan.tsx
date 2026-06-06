@@ -468,7 +468,8 @@ export default function P1_AskXiaotuan() {
               {phase >= 5 && (
                 <div className="fade-up" style={{ margin: '14px 0' }}>
                   <Photo
-                    seed={scene === 'sz' ? 'sz-landmark' : 'bj-forbidden-city'}
+                    seed={spots[0]?.seed ?? (scene === 'sz' ? 'sz-landmark' : 'bj-forbidden-city')}
+                    src={spots[0]?.photo}
                     height={150}
                     radius={14}
                   >

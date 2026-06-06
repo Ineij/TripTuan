@@ -22,6 +22,7 @@ interface RankItem {
   price?: string;
   badge?: string;
   photoSeed: string;
+  imageUrl?: string;
   // transport-specific extra line
   trainNo?: string;
   // self-arranged meal placeholder (not a booked item)
@@ -269,6 +270,7 @@ function toRankDays(days: any[]): Day[] {
       price: item.price ? String(item.price) : undefined,
       badge: item.hotelTier ? String(item.hotelTier) : item.queue ? `排队${item.queue}` : undefined,
       photoSeed: String(item.photoSeed ?? 'travel'),
+      imageUrl: item.imageUrl ? String(item.imageUrl) : undefined,
       selfArranged: Boolean(item.selfArranged),
     })),
   }));
@@ -350,7 +352,7 @@ function RankCard({ item }: { item: RankItem }) {
       }}
     >
       <div style={{ display: 'flex', gap: 10 }}>
-        <Photo seed={item.photoSeed} width={64} height={64} radius={10} style={{ flexShrink: 0 }} />
+        <Photo seed={item.photoSeed} src={item.imageUrl} width={64} height={64} radius={10} style={{ flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="h-between">
             <span style={{ fontSize: 14, fontWeight: 700, flex: 1 }}>{item.name}</span>

@@ -98,6 +98,9 @@ class TripStateStore:
                     "title": card.get("title") or card.get("name"),
                     "type": card.get("type"),
                     "area": card.get("area"),
+                    # Real per-person spend from DianpingDB, so order/payment
+                    # screens show the actual price instead of the flat type default.
+                    "price_per_person": card.get("price_per_person"),
                     "source": "demo_order_tool",
                 }
                 connection.execute(
