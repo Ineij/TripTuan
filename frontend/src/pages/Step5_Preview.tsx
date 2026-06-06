@@ -5,8 +5,9 @@ import { StatusBar } from '../components/StatusBar';
 import { NavBar } from '../components/NavBar';
 import { GoMark } from '../components/Atoms';
 import { Photo } from '../components/Photo';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp } from '../store';
-import { getPreview } from '../api';
+import { getPreview, getPickerItems, type Item as PickerItem } from '../api';
 
 type Period = '出发' | '上午' | '中午' | '下午' | '晚餐' | '晚上' | '返程';
 type Cat = '交通' | '景点' | '美食' | '酒店';
@@ -26,6 +27,9 @@ interface Item {
   photoSeed: string;
   /** Pre-generated Qwen illustration URL */
   imageUrl?: string;
+  /** Meal slot label + self-arranged placeholder flag */
+  meal?: string;
+  selfArranged?: boolean;
 }
 
 interface Day { label: string; title: string; items: Item[] }
@@ -47,7 +51,9 @@ const queueChip: Record<Queue, { bg: string; fg: string; label: string }> = {
 
 export default function Step5_Preview() {
   const nav = useNavigate();
-  const { scene, identity } = useApp();
+  const { scene, identity, selectedPOIs } = useApp();
+  const [pickerItems, setPickerItems] = useState<PickerItem[]>([]);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const [preview, setPreview] = useState({
     title: scene === 'sz' ? '深圳周末游' : '北京家庭文化游',
     route: scene === 'sz' ? '广州 → 深圳 · 2 天 1 夜' : '河北 → 北京 · 2 天 1 夜',
@@ -63,6 +69,7 @@ export default function Step5_Preview() {
       totalKm: scene === 'sz' ? '8.4' : '12.6',
       days: DAYS_BY_SCENE[scene],
     });
+    setLoadingPreview(true);
     getPreview(scene)
       .then((payload) => {
         if (!cancelled) {
@@ -74,14 +81,34 @@ export default function Step5_Preview() {
           });
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoadingPreview(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [scene]);
 
+  // Mirror the user's Step3 picks for the summary count (same source as
+  // Step2/Step4: getPickerItems + selectedPOIs).
+  useEffect(() => {
+    let cancelled = false;
+    getPickerItems(scene)
+      .then((its) => { if (!cancelled) setPickerItems(its); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [scene]);
+
   const days = preview.days;
-  const totalSights = days.flatMap((d) => d.items).filter((i) => i.cat === '景点').length;
+  // 个景点 reflects what the user actually picked; fall back to the planned
+  // itinerary only if the selection/items aren't available yet.
+  const selectedSights = pickerItems.filter(
+    (i) => selectedPOIs.has(i.id) && i.cat === 'sight',
+  ).length;
+  const totalSights = selectedSights > 0
+    ? selectedSights
+    : days.flatMap((d) => d.items).filter((i) => i.cat === '景点').length;
 
   return (
     <MobileFrame>
@@ -126,6 +153,18 @@ export default function Step5_Preview() {
           </div>
         </div>
 
+        {loadingPreview && (
+          <StreamingStatus
+            title="正在同步完整行程"
+            messages={[
+              '读取后端行程板',
+              '合并两天时间轴',
+              '同步午餐和晚餐安排',
+              '刷新路线里程和站点信息',
+            ]}
+          />
+        )}
+
         {/* Tag row */}
         <div
           style={{
@@ -142,6 +181,10 @@ export default function Step5_Preview() {
         </div>
 
         {/* Days */}
+        {days.length === 0 && loadingPreview && (
+          <div className="card shimmer" style={{ height: 220, marginBottom: 16 }} />
+        )}
+
         {days.map((d) => (
           <div key={d.label} style={{ marginBottom: 18 }}>
             <div className="h-between" style={{ margin: '0 4px 12px' }}>
@@ -237,6 +280,34 @@ function PreviewCard({ item, last }: { item: Item; last?: boolean }) {
   const cc = catChip[item.cat];
   const qc = item.queue ? queueChip[item.queue] : null;
 
+  if (item.selfArranged) {
+    return (
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '10px 14px 14px',
+          borderBottom: last ? 'none' : '1px dashed var(--mt-line-2)',
+        }}
+      >
+        <div
+          style={{
+            width: 50, height: 50, borderRadius: 8, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: '#fff1e6', fontSize: 20,
+          }}
+        >
+          🍽️
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--mt-text-2)' }}>{item.name}</div>
+          {item.note && (
+            <div className="text-tiny text-muted" style={{ marginTop: 4 }}>{item.note}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -249,9 +320,11 @@ function PreviewCard({ item, last }: { item: Item; last?: boolean }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
           <span style={{ fontSize: 14, fontWeight: 700, flex: 1, minWidth: 0 }}>{item.name}</span>
-          <span style={{ fontSize: 12, color: 'var(--mt-orange)', fontWeight: 800 }}>
-            ★ {item.rating}
-          </span>
+          {item.rating > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--mt-orange)', fontWeight: 800 }}>
+              ★ {item.rating}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
           <span

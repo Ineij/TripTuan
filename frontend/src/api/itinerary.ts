@@ -27,6 +27,10 @@ export interface DayItem {
   hotelTier?: HotelTier;
   note?: string;
   photoSeed: string;
+  /** Meal slot label (早餐/午餐/晚餐) when this row is a meal */
+  meal?: string;
+  /** True for a self-arranged meal placeholder (not a booked item) */
+  selfArranged?: boolean;
 }
 
 export interface Day {

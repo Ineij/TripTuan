@@ -391,7 +391,7 @@ Layer 3  疲劳均衡 + 餐点插入
 
 `backend/data/dianping_db.py` —— 启动时把两份大众点评导出 JSON 归一化进内存，单例 `get_db()`。
 
-- **数据**：`bj_poi_dzdp.json`(179) + `sz_poi_dzdp.json`(108) = **287**。
+- **数据**：`bj_poi_dzdp.json`(110) + `sz_poi_dzdp.json`(110) = **220**。
 - **归一化**：`_normalize` 把原始「一类/二类/三类/星级/人均/lon/lat…」映射成统一 schema；`_CAT_MAP` 把「景点/周边游→景点」；`_estimate_duration` 按二类估算停留时长。
 - **稳定 ID**：`_make_id(name, scene)` = `"dzdp_" + md5("{scene}:{name}")[:10]`，跨城同名不冲突，也是配图文件名的来源。
 

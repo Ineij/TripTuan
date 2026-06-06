@@ -220,6 +220,7 @@ class ItineraryPlannerAgent:
         ordered_cards = self._order_cards(cards)
         state.selected_cards = ordered_cards
         state.static_board = self._build_board(state, ordered_cards)
+        state.selected_cards = self._planned_cards_from_board(ordered_cards, state.static_board)
         state.stage = "confirmed"
         return state
 
@@ -242,58 +243,333 @@ class ItineraryPlannerAgent:
 
         state.selected_cards = ordered_cards
         state.static_board = self._build_board(state, ordered_cards)
+        state.selected_cards = self._planned_cards_from_board(ordered_cards, state.static_board)
         state.stage = "confirmed"
         return state
+
+    # Anchored meal times so a day always reads breakfast → morning sights →
+    # lunch → afternoon sights → dinner, and the period mapping lands correctly
+    # (午 12:30 → 中午, 晚 18:30 → 晚餐).
+    _MEAL_TIMES: dict[str, str] = {"早餐": "08:30", "午餐": "12:30", "晚餐": "18:30"}
 
     def _build_board(
         self, state: TripState, ordered_cards: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        request = state.structured_request
-        start_time = self._parse_start_time(request.get("start_time", "09:00"))
-        day2_start  = self._parse_start_time("09:00")   # Day 2 always starts fresh
+        """Build a meal-aware day plan from the already geo-routed cards.
 
-        board: list[dict[str, Any]] = [
-            {
-                "time": start_time.strftime("%H:%M"),
-                "action": f"从{request.get('departure_location', '出发地')}出发",
-                "type": "交通",
-                "day": 1,
-                "reason": "先进入核心目的地区域，减少后续来回折返。",
-            }
-        ]
-        current = start_time + timedelta(minutes=45)
-        current_day = 1
-
+        `_order_cards` owns the distance algorithm: it clusters days, routes each
+        day, and inserts restaurants at the lowest-detour meal windows. This
+        method keeps that ordering intact while rendering every day as
+        breakfast / lunch / dinner slots plus the surrounding route items.
+        """
+        cards_by_day: dict[int, list[dict[str, Any]]] = {}
         for card in ordered_cards:
-            card_day = card.get("_day", 1)
+            day = int(card.get("_day") or 1)
+            cards_by_day.setdefault(day, []).append(card)
+        if not cards_by_day:
+            cards_by_day = {1: []}
 
-            # On first Day-2 card: insert a "第二天出发" separator and reset clock
-            if card_day == 2 and current_day == 1:
-                current_day = 2
-                current = day2_start
-                board.append({
-                    "time": current.strftime("%H:%M"),
-                    "action": "第二天 · 继续出发",
-                    "type": "交通",
-                    "day": 2,
-                    "reason": "新的一天，体力恢复，继续探索。",
-                })
-                current += timedelta(minutes=15)
-
-            board.append(
-                {
-                    "time": current.strftime("%H:%M"),
-                    "action": card["title"],
-                    "type": card["type"],
-                    "card_id": card["card_id"],
-                    "duration_minutes": card["duration_minutes"],
-                    "day": card_day,
-                    "reason": self._planning_reason(card, request, state.weather),
-                }
-            )
-            current += timedelta(minutes=card["duration_minutes"] + 15)
-
+        board: list[dict[str, Any]] = []
+        for day in sorted(cards_by_day):
+            day_cards = cards_by_day[day]
+            route_cards = [c for c in day_cards if c["type"] != "酒店"]
+            hotels = [c for c in day_cards if c["type"] == "酒店"]
+            board.extend(self._build_day(state, day, route_cards, hotels))
         return self._enhance_board_with_ai(state, board)
+
+    def _planned_cards_from_board(
+        self, ordered_cards: list[dict[str, Any]], board: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        card_by_id = {str(card.get("card_id")): card for card in ordered_cards if card.get("card_id")}
+        planned: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in board:
+            cid = item.get("card_id")
+            key = str(cid) if cid else ""
+            if key and key in card_by_id and key not in seen:
+                planned.append(card_by_id[key])
+                seen.add(key)
+        return planned
+
+    def _build_day(
+        self,
+        state: TripState,
+        day: int,
+        route_cards: list[dict[str, Any]],
+        hotels: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        request = state.structured_request
+        departure = request.get("departure_location", "出发地")
+
+        if day == 1:
+            items: list[dict[str, Any]] = [{
+                "time": "08:00",
+                "action": f"从{departure}出发",
+                "type": "交通", "day": 1,
+                "reason": "先进入核心目的地区域，减少后续来回折返。",
+            }]
+        else:
+            items = [{
+                "time": "08:00",
+                "action": "第二天 · 继续出发",
+                "type": "交通", "day": day,
+                "reason": "新的一天，体力恢复，继续探索。",
+            }]
+
+        route_items, food_by_meal, meal_positions = self._split_route_by_meal(route_cards)
+
+        breakfast_food = food_by_meal.get("早餐")
+        if self._should_include_breakfast_slot(request, day, breakfast_food):
+            items.append(self._meal_slot(state, day, "早餐", breakfast_food))
+
+        lunch_cut = meal_positions.get("午餐")
+        if lunch_cut is None:
+            lunch_cut = (len(route_items) + 1) // 2
+        dinner_cut = meal_positions.get("晚餐")
+        if dinner_cut is None:
+            dinner_cut = len(route_items)
+        lunch_cut = max(0, min(lunch_cut, len(route_items)))
+        dinner_cut = max(lunch_cut, min(dinner_cut, len(route_items)))
+
+        morning = route_items[:lunch_cut]
+        afternoon = route_items[lunch_cut:dinner_cut]
+        evening = route_items[dinner_cut:]
+
+        clock = self._parse_start_time("09:30")
+        for card in morning:
+            items.append(self._sight_item(state, card, clock, day))
+            clock += timedelta(minutes=int(card.get("duration_minutes") or 90) + 15)
+
+        items.append(self._meal_slot(state, day, "午餐", food_by_meal.get("午餐")))
+
+        clock = self._parse_start_time("14:00")
+        for card in afternoon:
+            items.append(self._sight_item(state, card, clock, day))
+            clock += timedelta(minutes=int(card.get("duration_minutes") or 90) + 15)
+
+        items.append(self._meal_slot(state, day, "晚餐", food_by_meal.get("晚餐")))
+
+        clock = self._parse_start_time("19:45")
+        for card in evening:
+            items.append(self._sight_item(state, card, clock, day))
+            clock += timedelta(minutes=int(card.get("duration_minutes") or 90) + 15)
+
+        # Overnight hotel caps day 1.
+        if hotels:
+            hotel = hotels[0]
+            hotel_clock = max(self._parse_start_time("20:30"), clock)
+            items.append({
+                "time": hotel_clock.strftime("%H:%M"),
+                "action": hotel["title"],
+                "type": "酒店",
+                "card_id": hotel["card_id"],
+                "duration_minutes": hotel.get("duration_minutes") or 0,
+                "day": day,
+                "rating": hotel.get("rating") or 0,
+                "reason": self._planning_reason(hotel, request, state.weather),
+            })
+        return items
+
+    def _split_route_by_meal(
+        self, route_cards: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], dict[str, int]]:
+        """Separate lunch/dinner cards from the routed sequence.
+
+        Hard rule: selected food POIs can only become lunch or dinner. Extra
+        restaurants are candidates that lose the slot competition; they do not
+        stay in the itinerary as additional food stops.
+        """
+        route_items: list[dict[str, Any]] = []
+        food_by_meal: dict[str, dict[str, Any]] = {}
+        meal_positions: dict[str, int] = {}
+
+        for card in route_cards:
+            if card["type"] != "美食":
+                route_items.append(card)
+                continue
+
+            meal = str(card.get("_meal") or self._meal_preference(card))
+            if meal not in {"午餐", "晚餐"}:
+                meal = "午餐"
+            if meal not in food_by_meal:
+                food_by_meal[meal] = card
+                meal_positions[meal] = len(route_items)
+
+        return route_items, food_by_meal, meal_positions
+
+    _TRANSPORT_ARRIVAL_HINTS = (
+        "站", "机场", "高铁", "火车", "动车", "客运", "汽车站", "码头"
+    )
+    _CITY_HINTS = (
+        "北京", "深圳", "广州", "上海", "杭州", "成都", "重庆", "武汉", "南京",
+        "西安", "天津", "河北", "保定", "香港", "澳门", "苏州", "佛山", "东莞",
+    )
+    _SCENE_CITY_HINTS = {
+        "sz": ("深圳", "shenzhen"),
+        "bj": ("北京", "beijing"),
+    }
+
+    def _should_include_breakfast_slot(
+        self,
+        request: dict[str, Any],
+        day: int,
+        breakfast_food: dict[str, Any] | None,
+    ) -> bool:
+        if breakfast_food is not None:
+            return True
+        if day > 1:
+            return True
+        return not self._is_first_day_arrival(request)
+
+    def _is_first_day_arrival(self, request: dict[str, Any]) -> bool:
+        departure = str(request.get("departure_location") or "")
+        if not departure:
+            return False
+
+        # A station/airport style start means the traveller has just arrived or
+        # is still in city-to-city transit; breakfast should happen before this
+        # destination itinerary unless the user picked a real breakfast shop.
+        if any(hint in departure for hint in self._TRANSPORT_ARRIVAL_HINTS):
+            return True
+
+        if self._departure_matches_destination(request, departure):
+            return False
+
+        destination = str(request.get("destination") or "")
+        destination_tokens = set(self._destination_tokens(request))
+        for city in self._CITY_HINTS:
+            if city in departure and city not in destination and city not in destination_tokens:
+                return True
+        return False
+
+    def _departure_matches_destination(
+        self, request: dict[str, Any], departure: str
+    ) -> bool:
+        departure_lower = departure.lower()
+        for token in self._destination_tokens(request):
+            if token and token.lower() in departure_lower:
+                return True
+        return False
+
+    def _destination_tokens(self, request: dict[str, Any]) -> tuple[str, ...]:
+        destination = str(request.get("destination") or "")
+        scene = str(request.get("scene") or "")
+        tokens = [destination]
+        tokens.extend(self._SCENE_CITY_HINTS.get(scene, ()))
+        if "北京" in destination:
+            tokens.extend(("北京", "beijing"))
+        if "深圳" in destination:
+            tokens.extend(("深圳", "shenzhen"))
+        if "香港" in destination:
+            tokens.extend(("香港", "hong kong"))
+        return tuple(dict.fromkeys(token for token in tokens if token))
+
+    def _sight_item(
+        self, state: TripState, card: dict[str, Any], clock: datetime, day: int
+    ) -> dict[str, Any]:
+        return {
+            "time": clock.strftime("%H:%M"),
+            "action": card["title"],
+            "type": card["type"],
+            "card_id": card["card_id"],
+            "duration_minutes": card.get("duration_minutes") or 90,
+            "day": day,
+            "rating": card.get("rating") or 0,
+            "reason": self._planning_reason(card, state.structured_request, state.weather),
+        }
+
+    def _meal_slot(
+        self, state: TripState, day: int, meal: str, food: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """A meal-time row: the picked restaurant if one was assigned, else a
+        self-arranged placeholder so every day still reads as a full 早/午/晚."""
+        time_str = self._MEAL_TIMES[meal]
+        if food is not None:
+            return {
+                "time": time_str,
+                "action": food["title"],
+                "type": "美食",
+                "card_id": food["card_id"],
+                "duration_minutes": food.get("duration_minutes") or 60,
+                "day": day,
+                "meal": meal,
+                "rating": food.get("rating") or 0,
+                "reason": self._planning_reason(food, state.structured_request, state.weather),
+            }
+        if meal == "早餐":
+            action = "早餐 · 酒店含早 / 自理"
+            reason = "酒店含早或就近解决，不占用团购名额。"
+        else:
+            action = f"{meal} · 自理"
+            reason = "这一餐先留个位，想团购可回挑选页加购。"
+        return {
+            "time": time_str,
+            "action": action,
+            "type": "美食",
+            "duration_minutes": 60,
+            "day": day,
+            "meal": meal,
+            "self_arranged": True,
+            "reason": reason,
+        }
+
+    def _route_sights(self, sights: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Geo-route a day's sights (nearest-neighbour + 2-opt) then de-fatigue."""
+        if len(sights) <= 1:
+            return list(sights)
+        ordered = self._nearest_neighbor(sights)
+        if len(ordered) >= 3:
+            ordered = self._two_opt(ordered)
+        return self._balance_fatigue(ordered)
+
+    # Cuisine keywords (substring-matched against a card's category_2), so
+    # "烧烤烤串" still reads as a dinner, "精品咖啡" as a lunch, etc.
+    _BREAKFAST_KEYWORDS = ("早餐", "早茶", "粥", "包子", "豆浆")
+    _DINNER_KEYWORDS = ("火锅", "烧烤", "烤肉", "烤串", "自助", "烫", "海鲜", "夜宵", "酒馆")
+    _LUNCH_KEYWORDS  = ("咖啡", "饮品", "面包", "甜品", "小吃", "快餐", "茶", "简餐", "轻食")
+
+    def _meal_preference(self, food: dict[str, Any]) -> str:
+        text = " ".join(
+            [
+                str(food.get("category_2") or ""),
+                str(food.get("title") or ""),
+                " ".join(str(tag) for tag in food.get("tags", [])[:4]),
+            ]
+        )
+        if any(k in text for k in self._BREAKFAST_KEYWORDS):
+            return "午餐"
+        if any(k in text for k in self._DINNER_KEYWORDS):
+            return "晚餐"
+        if any(k in text for k in self._LUNCH_KEYWORDS):
+            return "午餐"
+        return "午餐"  # neutral cuisines default to lunch
+
+    def _distribute_foods(
+        self, foods: list[dict[str, Any]], num_days: int
+    ) -> dict[tuple[int, str], dict[str, Any] | None]:
+        """Assign picked restaurants only to lunch/dinner slots."""
+        slots: dict[tuple[int, str], dict[str, Any] | None] = {
+            (d, meal): None
+            for d in range(1, num_days + 1)
+            for meal in ("午餐", "晚餐")
+        }
+        per_day = {d: 0 for d in range(1, num_days + 1)}
+
+        def place(food: dict[str, Any], meals: tuple[str, ...]) -> None:
+            # Try each meal in preference order, on the least-busy day that has
+            # that slot open — this spreads meals evenly across days.
+            for meal in meals:
+                for d in sorted(range(1, num_days + 1), key=lambda x: per_day[x]):
+                    if slots[(d, meal)] is None:
+                        slots[(d, meal)] = food
+                        per_day[d] += 1
+                        return
+
+        for food in foods:
+            pref = self._meal_preference(food)
+            other = "晚餐" if pref == "午餐" else "午餐"
+            place(food, (pref, other))
+        return slots
 
     def _llm_rerank(
         self,
@@ -391,32 +667,36 @@ class ItineraryPlannerAgent:
     def _order_cards(self, cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Three-layer smart ordering:
-          1. Geographic K-means clustering → Day 1 / Day 2 groups
+          1. Geographic sight clustering → Day 1 / Day 2 groups
           2. Within each day: nearest-neighbour routing + 2-opt improvement
           3. Fatigue balancing + meal insertion at lunch / dinner positions
         Hotels are always placed at the end of their day.
         Each returned card is tagged with _day=1 or _day=2.
         """
-        if len(cards) <= 2:
-            for c in cards:
-                c["_day"] = 1
-            return cards
-
         hotels = [c for c in cards if c["type"] == "酒店"]
-        non_hotels = [c for c in cards if c["type"] != "酒店"]
+        route_cards = [c for c in cards if c["type"] != "酒店"]
+        sights = [c for c in route_cards if c["type"] != "美食"]
+        foods = [c for c in route_cards if c["type"] == "美食"]
 
-        if not non_hotels:
+        if not route_cards:
             for c in cards:
                 c["_day"] = 1
             return cards
 
         # ── Layer 1: day clustering ────────────────────────────────────
-        # Always try to split into 2 days when there are >= 4 non-hotel items
-        # (a 2-day 1-night trip with ≤3 attractions is unrealistically sparse).
-        if len(non_hotels) >= 4:
-            day1_raw, day2_raw = self._cluster_days(non_hotels)
+        # A 2-day trip must have at least one sight on each day whenever the
+        # user picked two or more sights. Foods are assigned after that by
+        # proximity, so restaurants cannot accidentally consume Day 2 by
+        # themselves while all attractions stay on Day 1.
+        if len(sights) >= 2:
+            day1_sights, day2_sights = self._split_sights_across_days(sights)
+            day1_foods, day2_foods = self._assign_foods_to_days(
+                foods, day1_sights, day2_sights
+            )
+            day1_raw = day1_sights + day1_foods
+            day2_raw = day2_sights + day2_foods
         else:
-            day1_raw, day2_raw = non_hotels, []
+            day1_raw, day2_raw = route_cards, []
 
         # ── Layer 2+3: route each day ──────────────────────────────────
         day1_ordered = self._route_day(day1_raw)
@@ -437,6 +717,57 @@ class ItineraryPlannerAgent:
             c["_day"] = 2
 
         return day1_ordered + day2_ordered
+
+    def _split_sights_across_days(
+        self, sights: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if len(sights) < 2:
+            return list(sights), []
+
+        day1, day2 = self._cluster_days(sights)
+        if day1 and day2:
+            return day1, day2
+
+        ordered = self._nearest_neighbor(sights)
+        split_at = (len(ordered) + 1) // 2
+        day1 = ordered[:split_at]
+        day2 = ordered[split_at:]
+        if not day2 and len(day1) > 1:
+            day2 = [day1.pop()]
+        return day1, day2
+
+    def _assign_foods_to_days(
+        self,
+        foods: list[dict[str, Any]],
+        day1_sights: list[dict[str, Any]],
+        day2_sights: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        day1_foods: list[dict[str, Any]] = []
+        day2_foods: list[dict[str, Any]] = []
+        for food in foods:
+            d1 = self._distance_to_group(food, day1_sights)
+            d2 = self._distance_to_group(food, day2_sights)
+            if d1 == d2:
+                (day1_foods if len(day1_foods) <= len(day2_foods) else day2_foods).append(food)
+            elif d1 < d2:
+                day1_foods.append(food)
+            else:
+                day2_foods.append(food)
+        return day1_foods, day2_foods
+
+    def _distance_to_group(
+        self, poi: dict[str, Any], group: list[dict[str, Any]]
+    ) -> float:
+        if not group:
+            return float("inf")
+        if not (poi.get("lat") and poi.get("lng")):
+            return float("inf")
+        distances = [
+            _haversine(poi["lat"], poi["lng"], item["lat"], item["lng"])
+            for item in group
+            if item.get("lat") and item.get("lng")
+        ]
+        return min(distances) if distances else float("inf")
 
     # ------------------------------------------------------------------
     # Layer 1 — Geographic K-means clustering into two days
@@ -518,7 +849,7 @@ class ItineraryPlannerAgent:
         if len(pois) <= 1:
             return list(pois)
 
-        sights = [c for c in pois if c["type"] == "景点"]
+        sights = [c for c in pois if c["type"] not in ("美食", "酒店")]
         foods  = [c for c in pois if c["type"] == "美食"]
 
         # Geo-route the sights
@@ -608,48 +939,101 @@ class ItineraryPlannerAgent:
     def _insert_meals(
         self, sights: list[dict[str, Any]], foods: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """Insert food items at minimum-detour positions within meal time windows.
+        """Insert food items at minimum-detour positions within meal windows.
 
         For each food POI we find the insertion index that minimises the extra
         distance added to the geo-routed sight sequence:
             detour(i) = dist(i-1 → food) + dist(food → i) - dist(i-1 → i)
 
-        Timing constraints keep the meal in the right half of the day:
-          - lunch:  first 55 % of the sight list
-          - dinner: last 55 % (i.e., index ≥ 45 % of current list)
+        Timing constraints keep each meal in the right part of the day:
+          - lunch: first 55 % of the route
+          - dinner: last 55 % (i.e., index ≥ 45 % of current route)
         When coordinates are missing we fall back to the old positional approach.
         """
         if not foods:
             return sights
 
-        # Classify foods by preferred meal
-        lunch_foods  = [f for f in foods if f.get("category_2", "") in self._LUNCH_CATS]
-        dinner_foods = [f for f in foods if f.get("category_2", "") in self._DINNER_CATS]
-        neutral      = [f for f in foods if f not in lunch_foods and f not in dinner_foods]
-
-        mid = len(neutral) // 2 + len(neutral) % 2
-        lunch_pool  = lunch_foods  + neutral[:mid]
-        dinner_pool = dinner_foods + neutral[mid:]
-
         result = list(sights)
-
-        # Insert lunch: allowed positions cover the first ~55 % of the route
-        if lunch_pool:
-            hi = max(1, round(len(result) * 0.55))
-            result = self._insert_min_detour(result, lunch_pool[0], lo=1, hi=hi)
-
-        # Insert dinner: allowed positions cover the last ~55 % of the route
-        if dinner_pool:
-            lo = max(1, round(len(result) * 0.45))
-            result = self._insert_min_detour(result, dinner_pool[0], lo=lo, hi=len(result))
-
-        # Any leftover foods: free placement anywhere
-        used = {id(f) for f in (lunch_pool[:1] + dinner_pool[:1])}
-        for f in foods:
-            if id(f) not in used:
-                result = self._insert_min_detour(result, f, lo=0, hi=len(result))
-
+        remaining = list(foods)
+        for meal in ("午餐", "晚餐"):
+            food = self._choose_food_for_meal(remaining, result, meal)
+            if food is None:
+                continue
+            remaining.remove(food)
+            food["_meal"] = meal
+            lo, hi = self._meal_window(meal, len(result))
+            result = self._insert_min_detour(result, food, lo=lo, hi=hi)
         return result
+
+    def _choose_food_for_meal(
+        self,
+        foods: list[dict[str, Any]],
+        route: list[dict[str, Any]],
+        meal: str,
+    ) -> dict[str, Any] | None:
+        if not foods:
+            return None
+        lo, hi = self._meal_window(meal, len(route))
+        return min(
+            foods,
+            key=lambda food: (
+                0 if self._meal_preference(food) == meal else 1,
+                self._min_detour_cost(route, food, lo, hi),
+                -(food.get("rating") or 0),
+            ),
+        )
+
+    def _meal_window(self, meal: str, route_length: int) -> tuple[int, int]:
+        if route_length <= 0:
+            return 0, 0
+        if meal == "晚餐":
+            lo = max(1, round(route_length * 0.45))
+            return lo, route_length
+        hi = max(1, round(route_length * 0.55))
+        lo = 1 if route_length > 1 else 0
+        return lo, hi
+
+    def _min_detour_cost(
+        self,
+        route: list[dict[str, Any]],
+        food: dict[str, Any],
+        lo: int,
+        hi: int,
+    ) -> float:
+        n = len(route)
+        if n == 0:
+            return 0.0
+        lo = max(0, min(lo, n))
+        hi = max(lo, min(hi, n))
+        if not (food.get("lat") and food.get("lng")):
+            return float("inf")
+        if not all(c.get("lat") and c.get("lng") for c in route):
+            return float("inf")
+
+        best = float("inf")
+        for i in range(lo, hi + 1):
+            if i == 0:
+                cost = _haversine(
+                    food["lat"], food["lng"],
+                    route[0]["lat"], route[0]["lng"],
+                )
+            elif i == n:
+                cost = _haversine(
+                    route[-1]["lat"], route[-1]["lng"],
+                    food["lat"], food["lng"],
+                )
+            else:
+                prev_c, next_c = route[i - 1], route[i]
+                cost = (
+                    _haversine(prev_c["lat"], prev_c["lng"],
+                               food["lat"], food["lng"])
+                    + _haversine(food["lat"], food["lng"],
+                                 next_c["lat"], next_c["lng"])
+                    - _haversine(prev_c["lat"], prev_c["lng"],
+                                 next_c["lat"], next_c["lng"])
+                )
+            best = min(best, cost)
+        return best
 
     def _insert_min_detour(
         self,

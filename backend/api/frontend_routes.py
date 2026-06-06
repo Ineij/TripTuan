@@ -368,20 +368,32 @@ def _select_and_rerank(
 
 
 def _ensure_planned_trip(scene: str, picks: list[str] | None = None) -> dict[str, Any]:
+    # When explicit picks match the latest planned/reranked selection, reuse the
+    # cached board. Otherwise reselect + replan so the order never reflects a
+    # different/earlier selection.
+    if picks:
+        state = _ensure_trip(scene)
+        selected_ids = _resolve_selected_ids(picks, state.get("candidate_cards", []))
+        session = _STORE.get_session(scene) or {}
+        cached_ids = [str(cid) for cid in session.get("selected_card_ids") or []]
+        if (
+            state.get("static_board")
+            and selected_ids
+            and set(selected_ids) == set(cached_ids)
+        ):
+            return state
+        return _select_and_plan(scene, picks)
     state = _ensure_trip(scene)
     if state.get("static_board"):
         return state
-    if picks:
-        selected = picks
-    else:
-        # Auto-select a balanced mix: ≤4 sights + ≤2 foods + ≤1 hotel
-        candidates = state.get("candidate_cards", [])
-        sights  = [c["card_id"] for c in candidates if c.get("type") in ("景点", "拍照点", "休息点")][:4]
-        foods   = [c["card_id"] for c in candidates if c.get("type") == "美食"][:2]
-        hotels  = [c["card_id"] for c in candidates if c.get("type") == "酒店"][:1]
-        selected = sights + foods + hotels
-        if not selected:
-            selected = [c["card_id"] for c in candidates[:6]]
+    # No picks and no board yet → auto-select a balanced mix: ≤4 sights + ≤2 foods + ≤1 hotel
+    candidates = state.get("candidate_cards", [])
+    sights  = [c["card_id"] for c in candidates if c.get("type") in ("景点", "拍照点", "休息点")][:4]
+    foods   = [c["card_id"] for c in candidates if c.get("type") == "美食"][:2]
+    hotels  = [c["card_id"] for c in candidates if c.get("type") == "酒店"][:1]
+    selected = sights + foods + hotels
+    if not selected:
+        selected = [c["card_id"] for c in candidates[:6]]
     return _select_and_plan(scene, selected)
 
 
@@ -499,6 +511,8 @@ def _board_to_days(board: list[dict[str, Any]], scene: str) -> list[dict[str, An
             "note":      item.get("reason"),
             "photoSeed": _photo_seed(item.get("action") or "travel"),
             "cardId":    item.get("card_id"),
+            "meal":         item.get("meal") or "",
+            "selfArranged": bool(item.get("self_arranged")),
         }
 
     # ── Prefer explicit day tags written by ItineraryPlannerAgent ──────

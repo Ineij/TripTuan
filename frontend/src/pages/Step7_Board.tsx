@@ -4,6 +4,7 @@ import { MobileFrame } from '../components/MobileFrame';
 import { StatusBar } from '../components/StatusBar';
 import { GoMark } from '../components/Atoms';
 import { Photo } from '../components/Photo';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp, type Weather } from '../store';
 import type { Scene } from '../types';
 import { getBoardState, checkInStation, getWeather, getPreview, getPickerItems, generatePoster, getMicroRecs, getOrder } from '../api';
@@ -76,6 +77,7 @@ export default function Step7_Board() {
   const [forecastDays, setForecastDays] = useState<{ date: string; cond: string; tempH: number; tempL: number }[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [todoText, setTodoText] = useState('');
+  const [loadingTrip, setLoadingTrip] = useState(false);
 
   // Board data loaded from API
   const [boardDay1, setBoardDay1] = useState<BoardItem[]>([]);
@@ -104,8 +106,15 @@ export default function Step7_Board() {
 
   // Load itinerary + POI data from backend
   useEffect(() => {
+    let cancelled = false;
+    setLoadingTrip(true);
+    setBoardDay1([]);
+    setBoardDay2([]);
+    setBoardPins([]);
+    setBoardRouteStops([]);
     Promise.all([getPreview(scene), getPickerItems(scene)])
       .then(([preview, items]) => {
+        if (cancelled) return;
         // POI items with lat/lng (API returns them even though type doesn't declare them)
         type PoiWithCoords = { id: string; cat: string; name: string; rating: number;
           subDesc: string; photoSeed: string; lat?: number; lng?: number };
@@ -162,7 +171,13 @@ export default function Step7_Board() {
         setBoardRouteStops(stops);
         // (MapStage fits & centres the view on these stops itself.)
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoadingTrip(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [scene]);
 
   // Sync completed stations from board state
@@ -240,6 +255,7 @@ export default function Step7_Board() {
           weatherMeta={weatherMeta}
           pins={pins}
           routeStops={routeStops}
+          loading={loadingTrip}
           showNearby={showNearby}
           focusedPin={focusedPin}
           setFocusedPin={setFocusedPin}
@@ -303,6 +319,18 @@ export default function Step7_Board() {
           <div style={{ padding: '14px', maxHeight: panelMode === 'trip' ? 640 : 'none', overflowY: panelMode === 'trip' ? 'auto' : 'visible' }}>
             {tab === '总览' && (
               <TripProgress scene={scene} doneStations={doneStations} totalStations={totalStations} />
+            )}
+
+            {loadingTrip && items.length === 0 && (
+              <StreamingStatus
+                title="正在同步行中看板"
+                messages={[
+                  '读取已支付订单',
+                  '加载行程时间轴',
+                  '匹配地图坐标',
+                  '刷新路线和附近推荐',
+                ]}
+              />
             )}
 
             {items.map((it, i) => (
@@ -377,9 +405,10 @@ export default function Step7_Board() {
 
 function MapStage({
   scene, weather, weatherMeta, pins, routeStops, showNearby, focusedPin, setFocusedPin,
-  height, onOpenPlace, onOpenWeather, onOpenFortune, onOpenPoster, onExpandMap, onExpandTrip, panelMode, doneStations, totalStations,
+  height, onOpenPlace, onOpenWeather, onOpenFortune, onOpenPoster, onExpandMap, onExpandTrip, panelMode, doneStations, totalStations, loading,
 }: {
   scene: Scene; weather: Weather; weatherMeta: typeof WEATHER_META[Weather]; pins: MapPin[]; routeStops: RouteStop[];
+  loading: boolean;
   showNearby: boolean; focusedPin: string | null; setFocusedPin: (name: string) => void;
   height: number;
   onOpenPlace: (p: MapPin) => void; onOpenWeather: () => void; onOpenFortune: () => void; onOpenPoster: () => void;
@@ -510,6 +539,21 @@ function MapStage({
       {/* Subtle weather tint over the map */}
       <div style={{ position: 'absolute', inset: 0, background: weatherMeta.bg, pointerEvents: 'none' }} />
       <WeatherEffect weather={weather} />
+
+      {loading && routeStops.length === 0 && (
+        <div style={{ position: 'absolute', left: 14, right: 14, bottom: 18, zIndex: 6 }}>
+          <StreamingStatus
+            title="正在加载地图路线"
+            compact
+            messages={[
+              '读取行程站点',
+              '匹配 POI 坐标',
+              '铺设地图路径',
+              '准备附近提醒',
+            ]}
+          />
+        </div>
+      )}
 
       <div style={{ position: 'absolute', top: 10, left: 10, right: 10, display: 'flex', gap: 8 }}>
         <MiniCard icon={weatherMeta.icon} title={`${weatherMeta.temp} ${weatherMeta.title}`} sub={weatherMeta.outfit} onClick={onOpenWeather} />
@@ -1127,13 +1171,17 @@ function PosterSheet({ scene }: { scene: Scene }) {
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.72))' }} />
             <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18 }}>
               {loading ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,216,74,.6)', borderTopColor: '#FFD100', animation: 'spin .8s linear infinite' }} />
-                  <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.9, textAlign: 'center' }}>
-                    AI 正在作画…<br />
-                    <span style={{ fontSize: 11, opacity: 0.7 }}>约需 30–60 秒，请稍等</span>
-                  </div>
-                </div>
+                <StreamingStatus
+                  title="正在生成旅行海报"
+                  tone="dark"
+                  compact
+                  messages={[
+                    '整理行程亮点',
+                    '生成海报画面',
+                    '写入分享文案',
+                    '保存图片结果',
+                  ]}
+                />
               ) : (
                 <>
                   <div style={{ fontSize: 22, fontWeight: 900 }}>{scene === 'bj' ? '北京家庭文化游' : '深圳周末游'}</div>
@@ -1232,6 +1280,17 @@ function TeaSheet({ scene, onDelivery }: { scene: Scene; onDelivery: (choice: De
         <div className="text-small text-muted" style={{ textAlign: 'center', padding: '24px 0' }}>
           暂无推荐，请稍后再试
         </div>
+      )}
+      {items.length === 0 && loading && (
+        <StreamingStatus
+          title="正在寻找附近推荐"
+          messages={[
+            '读取当前位置附近候选',
+            '过滤饮品和小吃类型',
+            '按距离和评分排序',
+            '同步推荐卡片',
+          ]}
+        />
       )}
       {items.map((item) => {
         const open = expanded === item.id;
@@ -1529,7 +1588,17 @@ function OrdersSheet({ scene }: { scene: Scene }) {
       {!orderId && (
         <div className="text-small text-muted" style={{ marginBottom: 14, lineHeight: 1.6 }}>尚未创建订单。请先完成选址确认步骤。</div>
       )}
-      {loading && <div className="text-small text-muted" style={{ padding: '12px 0' }}>加载中…</div>}
+      {loading && (
+        <StreamingStatus
+          title="正在同步订单凭证"
+          messages={[
+            '读取订单号',
+            '同步支付状态',
+            '加载凭证列表',
+            '刷新订单金额',
+          ]}
+        />
+      )}
       {order && (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', marginBottom: 10, borderBottom: '1px solid var(--mt-line-2)' }}>
