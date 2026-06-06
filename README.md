@@ -1,11 +1,11 @@
-# 小团出行 · AI 行程规划 Demo
+# 小团出行 · TripTuan — AI 行程规划全栈 Demo
 
-> 一个全栈的 **AI 出行规划** 演示项目：用户用自然语言/结构化表单说出需求，系统通过多个 AI Agent
-> 完成「选点 → 排程 → 下单 → 出发 → 核销 → 实时监控 → 生成海报」的完整旅程闭环。
+> 一个把一次完整旅行从「一句话需求」跑到「纪念海报」的全栈 **AI 出行规划** 系统：用户用自然语言 / 结构化表单
+> 说出需求，系统通过多个 AI Agent 完成「**选点 → 排程 → 下单 → 出发 → 核销 → 实时监控 → 生成海报**」的完整旅程闭环。
 >
-> - **后端**：FastAPI + LangGraph 多 Agent 编排，LongCat LLM 做语义决策，AMap 提供真实天气/路线，Qwen 生成图片。
-> - **前端**：React + Vite + TypeScript 移动端原型，一条 8 步演示主线。
-> - **城市**：目前内置两个场景 —— `sz`（深圳）与 `bj`（北京）。
+> - **后端**：FastAPI + LangGraph 多 Agent 编排，LongCat LLM 做语义决策，高德 AMap 提供真实天气/路线，Qwen 生成图片。
+> - **前端**：React + Vite + TypeScript 移动端高保真原型，一条 8 步演示主线。
+> - **城市**：内置两个完整场景 —— `sz`（深圳）与 `bj`（北京）。
 
 ---
 
@@ -24,6 +24,7 @@
 11. [环境变量](#环境变量)
 12. [测试](#测试)
 13. [真实 vs Mock 说明](#真实-vs-mock-说明)
+14. [更多文档](#更多文档)
 
 ---
 
@@ -35,7 +36,7 @@
 |------|------|------|
 | Python | 3.12+（开发机用 3.14） | 后端运行时 |
 | Node.js | 18+ | 前端构建 |
-| API Key | 见 [环境变量](#环境变量) | LLM / 图片 / AMap，缺失时各模块有兜底逻辑 |
+| API Key | 见 [环境变量](#环境变量) | LLM / 图片 / AMap，**缺失时各模块都有兜底逻辑，系统仍可完整跑通** |
 
 ### 1. 配置密钥
 
@@ -103,7 +104,8 @@ hackathon/
 │   │
 │   ├── api/
 │   │   ├── schemas.py             # Pydantic 请求体
-│   │   └── frontend_routes.py     # 前端适配层：所有 /api/* 路由（前端 React 调用）
+│   │   ├── frontend_routes.py     # 前端适配层：所有 /api/* 路由（前端 React 调用）
+│   │   └── preset.py              # 确定性场景预设（剧本，默认偏好时不跑 LLM）
 │   │
 │   ├── graphs/                    # LangGraph 编排
 │   │   ├── travel_graph.py        # 11 个线性 StateGraph（每个对应一个后端操作）
@@ -122,48 +124,35 @@ hackathon/
 │   │
 │   ├── core/                      # 模型 / 状态 / 配置
 │   │   ├── models.py              # TripState dataclass（贯穿全流程的统一状态）
-│   │   ├── state_store.py         # TripStateStore —— 原生 SQLite 持久化
-│   │   ├── frontend_store.py      # FrontendAdapterStore —— /api 适配层的会话/订单/配图持久化
+│   │   ├── state_store.py         # TripStateStore —— 原生 SQLite 持久化（6 表）
+│   │   ├── frontend_store.py      # FrontendAdapterStore —— /api 适配层持久化（4 表）
 │   │   └── env.py                 # 读取 .env / 环境变量
 │   │
-│   ├── data/                      # POI 数据 + SQLite 库
+│   ├── data/                      # POI 数据 + 预设 + SQLite 库
 │   │   ├── dianping_db.py         # DianpingDB —— 本地 POI 库（选点 / 附近推荐的唯一数据源）
 │   │   ├── bj_poi_dzdp.json       # 北京 POI（110 条）
 │   │   ├── sz_poi_dzdp.json       # 深圳 POI（110 条）
+│   │   ├── bj_preset.json         # 北京预设剧本（3 个两天一晚变体）
+│   │   ├── sz_preset.json         # 深圳预设剧本（3 个两天一晚变体）
 │   │   └── travel_state.sqlite    # 运行时状态库（运行时生成，不入库）
 │   │
 │   ├── scripts/
-│   │   └── generate_all_poi_images.py  # 批量生成 POI 配图（限流 + 断点续跑）
+│   │   └── generate_all_poi_images.py  # 批量生成 POI 配图（限流 + 断点续跑 + 熔断）
 │   │
-│   └── static/
-│       └── generated/             # 运行时生成的图片
-│           └── pois/              #   poi_<card_id>.png · poi_transport_<mode>.png
+│   └── static/generated/          # 运行时生成的图片（海报 / POI / 交通插画）
 │
 ├── frontend/                      # ── React + Vite + TS 前端 ──
 │   ├── package.json · vite.config.ts · tsconfig.json · index.html
-│   ├── README.md                  # 前端专属说明
 │   └── src/
-│       ├── main.tsx               # 入口
-│       ├── App.tsx                # HashRouter 路由表
-│       ├── store.tsx              # AppProvider 全局状态（scene/identity/选中项/paid/weather/orderId）
-│       ├── types.ts               # 领域类型（Scene = 'sz' | 'bj' 等）
+│       ├── main.tsx · App.tsx · store.tsx · types.ts
 │       ├── api/                   # 后端契约层（页面只从这里发请求）
-│       │   ├── index.ts           #   barrel + Api 契约
-│       │   ├── http.ts            #   fetch 封装（读 VITE_API_BASE，无 mock 兜底）
-│       │   ├── agent.ts           #   /api/chat·/chat/stream（流式聊天）
-│       │   ├── content.ts         #   /api/hotels·/tips·/spots·/sight-detail
-│       │   ├── pois.ts            #   /api/pois·/pois/{id}·/pois/transport/lookup
-│       │   ├── itinerary.ts       #   /api/itinerary/rerank·/regenerate·/preview
-│       │   ├── order.ts           #   /api/orders/draft·/{id}·/{id}/pay
-│       │   └── board.ts           #   /api/board/*·/weather·/recommend/*·/poster
-│       ├── components/            # MobileFrame / DemoOverlay / StepShell / NavBar / Photo ...
-│       ├── pages/                 # Overview + P1~P8 + Summary/Kevin/Flow/Review
+│       ├── components/            # MobileFrame / DemoOverlay / StreamingStatus / Photo / mapProjection ...
+│       ├── pages/                 # Overview + P1~P8 + Summary / Kevin / Flow / Review
 │       └── styles/                # tokens.css / components.css / app.css
 │
 ├── docs/                          # 设计文档
-│   ├── amap_maps_integration.md
-│   ├── amap_weather_integration.md
-│   └── runtime_tools_design.md
+│   ├── ARCHITECTURE 与 README 的补充设计稿
+│   └── TripTuan-完整技术拆解.docx  # 全量技术拆解（Word）
 │
 └── tests/                         # pytest
     ├── test_orchestrator.py
@@ -176,7 +165,6 @@ hackathon/
 
 ```
 浏览器 (React @ Vite)
-   │
    │  fetch → VITE_API_BASE
    ▼
 ┌──────────────────────────────────────────────────────────────┐
@@ -201,14 +189,15 @@ hackathon/
               │ 工具 / 客户端 / 数据                        │
               │  tools/  amap · runtime_context · orders   │
               │  clients/  llm(LongCat) · poster_image(Qwen)│
-              │  data/  DianpingDB(287 POI)                 │
+              │  data/  DianpingDB(220 POI)                 │
               │  core/  state_store · frontend_store (SQLite)│
               └──────────────────────────────────────────┘
                                          │
                           外部服务：LongCat · Qwen Image · AMap
 ```
 
-> 架构、各 Agent 的算法细节、工具实现、状态模型，详见 **[ARCHITECTURE.md](./ARCHITECTURE.md)**。
+> 架构、各 Agent 的算法细节、工具实现、状态模型，详见 **[ARCHITECTURE.md](./ARCHITECTURE.md)**，
+> 或全量 Word 版 **[docs/TripTuan-完整技术拆解.docx](./docs/TripTuan-完整技术拆解.docx)**。
 
 ---
 
@@ -297,9 +286,9 @@ POST /trip/poster            生成海报
 | P1 内容 | `content.ts` | `GET /api/hotels`、`/tips`、`/spots`、`/sight-detail` |
 | P3 勾选 | `pois.ts` | `GET /api/pois?scene=`、`GET /api/pois/{id}`、`POST /api/pois/transport/lookup` |
 | P4/P5 行程 | `itinerary.ts` | `POST /api/itinerary/rerank`、`/regenerate`、`GET /api/itinerary/preview` |
-| P6 下单 | `order.ts` | `POST /api/orders/draft`、`GET /api/orders/{id}`、`POST /api/orders/{id}/pay` |
+| P6 下单 | `order.ts` | `POST /api/orders/draft`、`GET /api/orders/{id}`、`PATCH /api/orders/{id}`、`POST /api/orders/{id}/pay` |
 | P7/P8 看板 | `board.ts` | `GET /api/board/{id}`、`POST /api/board/{id}/checkin`、`/ride`、`GET /api/weather`、`/recommend/nearby`、`/recommend/micro`、`POST /api/poster` |
-| 配图预生成 | — | `POST /api/pois/pregenerate`（后台任务，给 POI 预生成 Qwen 插画） |
+| 配图预生成 | — | `POST /api/pois/pregenerate`（兼容端点；全量出图请用批量脚本） |
 
 > 完整请求/响应字段见 `backend/api/frontend_routes.py` 与 `frontend/src/api/*.ts` 的文件头注释。
 
@@ -316,10 +305,11 @@ POST /trip/poster            生成海报
 
 | scene | 城市 | 总数 | 景点 | 美食 | 酒店 |
 |-------|------|------|------|------|------|
-| `bj` | 北京 | 179 | 48 | 80 | 51 |
-| `sz` | 深圳 | 108 | 28 | 50 | 30 |
+| `bj` | 北京 | 110 | 30 | 50 | 30 |
+| `sz` | 深圳 | 110 | 30 | 50 | 30 |
+| 合计 | — | **220** | 60 | 100 | 60 |
 
-DianpingDB 主要方法：`all` / `search` / `nearby` / `select_for_trip`（按偏好/预算/强度/特殊人群产出均衡候选）/ `get_micro_food`（饮品小吃轮播）。
+DianpingDB 主要方法：`all` / `get_by_id` / `stats` / `search` / `nearby`（按距离）/ `select_for_trip`（按偏好/预算/强度/特殊人群产出均衡候选）/ `get_micro_food`（饮品小吃轮播，支撑「换一批」）。
 
 ---
 
@@ -345,9 +335,9 @@ python3 backend/scripts/generate_all_poi_images.py             # 实跑
 特性：
 
 - **范围**：两个场景的全部「景点 / 拍照点 / 休息点」类 POI；同类交通共用一张图（`poi_transport_<mode>.png`）。
-- **限流自适应**：串行调用 + 成功间基础延迟 + 429/超时指数退避；连续失败触发熔断并干净退出。
+- **限流自适应**：串行调用 + 成功间基础延迟（6s 起）+ 429/超时指数退避（20s→180s）。
 - **断点续跑（幂等）**：已存在 `poi_<card_id>.png` 的 POI 直接跳过；被限流中断后重跑会自动补齐剩余。
-- **产物**：`backend/static/generated/pois/poi_<card_id>.png`，并在 `poi_images` 表登记 URL。
+- **熔断**：连续 12 次失败干净退出（`RATE_LIMIT_WALL`），等下次续跑。
 
 > 批量出图会同时写 `static/generated/pois/` 与 `travel_state.sqlite`，请勿与其它会改动这两处的任务并行。
 
@@ -360,15 +350,17 @@ python3 backend/scripts/generate_all_poi_images.py             # 实跑
 | 来源 | 表 | 内容 |
 |------|----|------|
 | `TripStateStore`（原生） | `trips` | 每个 trip 的完整 TripState JSON |
-| | `orders` | demo 订单（pending/paid/verified） |
-| | `checkins` | 打卡记录 |
-| | `runtime_events` | 运行时监控事件 |
-| | `recommendation_logs` | 微推荐日志 |
-| | `poster_records` | 海报记录 |
-| `FrontendAdapterStore`（/api 适配层） | `frontend_sessions` | 前端会话 |
+| | `orders` | demo 订单（pending/paid/verified/cancelled） |
+| | `checkins` | 打卡记录（镜像表） |
+| | `runtime_events` | 运行时监控事件（镜像表） |
+| | `recommendation_logs` | 微推荐日志（镜像表） |
+| | `poster_records` | 海报记录（镜像表） |
+| `FrontendAdapterStore`（/api 适配层） | `frontend_sessions` | 前端会话（scene → trip_id） |
 | | `frontend_board_states` | 看板状态 |
 | | `frontend_orders` | 前端订单 |
 | | `poi_images` | POI 配图 URL（`poi_id` → `image_url`） |
+
+> 「镜像表」= 每次 `save_state` 按 `trip_id` 先删后插，保证表内容与内存态一致；`trips`/`orders` 例外（upsert / 增量）。
 
 ---
 
@@ -399,6 +391,9 @@ python3 backend/scripts/generate_all_poi_images.py             # 实跑
 .venv/bin/python -m pytest tests/test_frontend_routes.py
 ```
 
+- `test_orchestrator.py`：跑完整 10 步生命周期，断言每步的 stage / 轨迹 / 订单计数 / 海报模型，并验证 TripState 能从 SQLite 完整恢复。
+- `test_frontend_routes.py`：用 FastAPI TestClient 验证 `/api/*` 契约，并验证「相同 picks 复用缓存行程、不重复 replan」。
+
 ---
 
 ## 真实 vs Mock 说明
@@ -406,4 +401,15 @@ python3 backend/scripts/generate_all_poi_images.py             # 实跑
 为避免误解，明确标注（详见 [ARCHITECTURE.md](./ARCHITECTURE.md) 的对照表）：
 
 - ✅ **真实**：AMap 天气/地理/路线；LongCat LLM 的所有语义决策与润色；Qwen 图片生成；`/trip/smart-plan` 的真实 Supervisor 路由。
-- ❌ **Demo / 占位**：订单与支付（纯 SQLite，无真实支付）；打车估价（固定公式 `18 + 6 × km`）；`/api/hotels·/tips·/spots·/sight-detail·/pois/transport/lookup` 等内容型端点（硬编码）；`/api/chat/stream` 的「思考」步骤（脚本化按字流式回放）；`official_supervisor`（FakeModel，仅产出 trace，不做真实路由）。
+- 🔶 **本地确定性**：DianpingDB 的 220 个真实 POI；打卡判定（半径 + 停留规则）。
+- ❌ **Demo / 占位**：订单与支付（纯 SQLite，无真实支付）；打车估价（固定公式 `18 + 6 × km`）；`/api/pois/transport/lookup` 等交通班次（硬编码）；`/api/chat/stream` 的「思考」步骤（脚本化按字流式回放）；`official_supervisor`（FakeModel，仅产出 trace，不做真实路由）。
+
+> 一句话总结：**事实（天气/路线/打卡/订单/POI）尽量真实或确定性；语义（选点/排序/话术/文案/配图）交给 AI；演示型内容（聊天脚本、交通班次）才是硬编码。**
+
+---
+
+## 更多文档
+
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** —— 架构详解（分层、Graph、Agent 算法、状态模型、持久化）。
+- **[docs/TripTuan-完整技术拆解.docx](./docs/TripTuan-完整技术拆解.docx)** —— 全量技术拆解 Word 文档（含完整 API 清单与文件索引）。
+- `docs/amap_maps_integration.md` · `docs/amap_weather_integration.md` · `docs/runtime_tools_design.md` —— 子系统设计稿。

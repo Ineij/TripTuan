@@ -3,6 +3,7 @@
 > 本文是 [README.md](./README.md) 的**深入实现**版：README 讲「是什么、怎么跑」，本文讲「内部怎么搭、每层做什么、关键算法长什么样」。
 >
 > 阅读顺序建议：先看 [1. 分层总览](#1-分层总览) 建立全局心智模型，再按需深入各层。
+> 需要可打印 / 可分享的全量版本，见 [docs/TripTuan-完整技术拆解.docx](./docs/TripTuan-完整技术拆解.docx)。
 
 ---
 
@@ -17,11 +18,12 @@
 7. [工具层 tools/](#7-工具层-tools)
 8. [外部客户端 clients/](#8-外部客户端-clients)
 9. [数据层：DianpingDB](#9-数据层dianpingdb)
-10. [持久化层：SQLite（10 张表）](#10-持久化层sqlite10-张表)
-11. [两套 API 面](#11-两套-api-面)
-12. [前端架构](#12-前端架构)
-13. [启动与托管](#13-启动与托管)
-14. [真实 vs Mock（权威对照表）](#14-真实-vs-mock权威对照表)
+10. [确定性预设：preset.py](#10-确定性预设presetpy)
+11. [持久化层：SQLite（10 张表）](#11-持久化层sqlite10-张表)
+12. [两套 API 面](#12-两套-api-面)
+13. [前端架构](#13-前端架构)
+14. [启动与托管](#14-启动与托管)
+15. [真实 vs Mock（权威对照表）](#15-真实-vs-mock权威对照表)
 
 ---
 
@@ -71,7 +73,7 @@
         │                                                 │
 ┌───────▼──────────────────────┐                         │
 │ 数据层  backend/data/         │                         │
-│  dianping_db.py  287 个 POI   │                         │
+│  dianping_db.py  220 个 POI   │                         │
 └───────┬──────────────────────┘                         │
         │                                                 │
 ┌───────▼─────────────────────────────────────────┐      │
@@ -79,8 +81,7 @@
 │  state_store.py   TripStateStore（6 张原生表）    │      │
 │  frontend_store.py FrontendAdapterStore（4 张表） │      │
 │  → 单一文件 backend/data/travel_state.sqlite      │      │
-└──────────────────────────────────────────────────┘      │
-                                                           ▼
+└──────────────────────────────────────────────────┘      ▼
                                        外部 API：LongCat · Qwen · AMap
 ```
 
@@ -95,6 +96,7 @@
 | 工具 | `tools/amap.py` · `runtime_context.py` · `orders.py` · `dianping.py` | 确定性事实：天气、路线、打卡、订单、运行时上下文 |
 | 客户端 | `clients/llm.py` · `poster_image.py` | 封装外部模型 API（LongCat / Qwen），统一返回结构 + 兜底 |
 | 数据 | `data/dianping_db.py` + `*_poi_dzdp.json` | 本地 POI 库，候选卡片与附近推荐的唯一来源 |
+| 预设 | `api/preset.py` + `*_preset.json` | 默认偏好时不跑 LLM 的确定性剧本 |
 | 持久化 | `core/state_store.py` · `frontend_store.py` | SQLite 读写，TripState ↔ 行 |
 | 模型/配置 | `core/models.py` · `core/env.py` | TripState dataclass、环境变量读取 |
 
@@ -123,7 +125,7 @@
 6. 返回        每层把 trip_state.to_dict() 逐级上抛 → JSON 响应
 ```
 
-**关键不变量：**每个图最后一个节点恒为 `persist_state`，保证任何一步业务推进都会落库；每个节点执行后由 `_wrap_node` 追加一条 `langgraph_trace`（`{graph, node, at, stage}`），整条执行链可在响应里回放。
+**关键不变量：** 每个图最后一个节点恒为 `persist_state`，保证任何一步业务推进都会落库；每个节点执行后由 `_wrap_node` 追加一条 `langgraph_trace`（`{graph, node, at, stage}`），整条执行链可在响应里回放。
 
 ---
 
@@ -291,7 +293,7 @@ Layer 3  疲劳均衡 + 餐点插入
 每张卡片打上 _day=1 / _day=2 标签供 _build_board 使用
 ```
 
-**`_build_board`**：从 `start_time`（默认 09:00）起，出发节点 +45min，之后每个点 `+duration+15min`；进入 Day2 插入「第二天 · 继续出发」分隔并把时钟重置到 09:00；最后 `_enhance_board_with_ai` 仅润色每个节点的 `reason`（不改 card_id / 时间 / 数量）。
+**`_build_board`**：把排好的卡片渲染成「出发 → 早餐 → 上午景点 → 午餐 → 下午景点 → 晚餐 → 晚间 → 酒店」的时间轴（午 12:30→中午、晚 18:30→晚餐 等锚点时间）；进入 Day2 插入「第二天 · 继续出发」分隔；最后 `_enhance_board_with_ai` 仅润色每个节点的 `reason`（不改 card_id / 时间 / 数量）。
 
 **`rerank(state, prev_variant_id)`**：与 `run` 不同，它让 LLM 产出真实排序决策（`_llm_rerank`，要求与上一方案至少 2 处不同；带 `prev_variant_id` 时 temperature 升到 0.9）；LLM 不可用或「换汤不换药」时退回 `_heuristic_rerank`（按 `prev_variant_id` 的 hash 做确定性轮转）。
 
@@ -335,7 +337,7 @@ Layer 3  疲劳均衡 + 餐点插入
 
 | 函数 | 作用 | 真实 / 兜底 |
 |------|------|------------|
-| `get_weather(dest, date)` | 实时天气 | ✅ AMap `weatherInfo`（用 `AMAP_CITY_CODES` 解析城市码）；失败返回**占位**（condition/temp=None + `fallback_reason`），绝不编造 |
+| `get_weather(dest, date)` | 实时天气 | ✅ AMap `weatherInfo`（用 `AMAP_CITY_CODES` 解析城市码，北京 110000 / 深圳 440300）；失败返回**占位**（condition/temp=None + `fallback_reason`），绝不编造 |
 | `geocode_address` / `reverse_geocode` | 正/逆地理编码 | ✅ AMap geo/regeo |
 | `get_division` | 行政区查询 | ✅ AMap config/district |
 | `get_route_between(o, d)` | 站点间路线 | ✅ AMap walking(≤3km)/driving；失败用 **haversine 分级估算**（步行/步行或打车/打车） |
@@ -382,7 +384,7 @@ Layer 3  疲劳均衡 + 餐点插入
 | `generate_poi_image` | 单个 POI 城市插画 `poi_<card_id>.png` | `1024*1024`(1:1) | `_CITY_ILLUSTRATION_TEMPLATE`（平面编辑风，强调「就是这个 POI、不要变成通用天际线」） |
 | `generate_transport_image` | 交通工具插画 `poi_transport_<slug>.png` | `1024*1024`(1:1) | `_TRANSPORT_ILLUSTRATION_TEMPLATE`（高铁/飞机/大巴） |
 
-> **品牌中立化**：`_poi_subject` 检测到连锁品牌名（`_BRAND_RISK_TERMS`，如星巴克/瑞幸/汉庭…）时，把 prompt 改写成「无品牌标识的同类场所」，规避商标风险。
+> **品牌中立化**：`_poi_subject` 检测到连锁品牌名（`_BRAND_RISK_TERMS`，如星巴克/瑞幸/汉庭/希尔顿…）时，把 prompt 改写成「无品牌标识的同类场所」，规避商标风险。
 > 无 key 时所有函数返回 `status="failed"` + 原因，**不阻断**主流程（海报仍有文案）。
 
 ---
@@ -397,8 +399,9 @@ Layer 3  疲劳均衡 + 餐点插入
 
 | scene | 城市 | 总数 | 景点 | 美食 | 酒店 |
 |-------|------|------|------|------|------|
-| `bj` | 北京 | 179 | 48 | 80 | 51 |
-| `sz` | 深圳 | 108 | 28 | 50 | 30 |
+| `bj` | 北京 | 110 | 30 | 50 | 30 |
+| `sz` | 深圳 | 110 | 30 | 50 | 30 |
+| 合计 | — | **220** | 60 | 100 | 60 |
 
 **主要方法：**
 - `all(scene)` / `get_by_id(card_id)` / `stats()`。
@@ -409,7 +412,19 @@ Layer 3  疲劳均衡 + 餐点插入
 
 ---
 
-## 10. 持久化层：SQLite（10 张表）
+## 10. 确定性预设：preset.py
+
+`backend/api/preset.py` —— 当用户**接受默认偏好**（默认 `打卡行 / 爱美食`，或从未触碰身份页）时，整个行程**不跑 LLM**，直接从 `backend/data/<scene>_preset.json` 的剧本构建。
+
+- `is_default_preset(scene, identity)`：判断是否走剧本——有预设且偏好为空或恰好等于默认集时返回 True。
+- `build_preset_state(...)`：把剧本里的 POI 名通过 DianpingDB 转成完整候选卡片（保留真实评分 / 价格 / 坐标 / 配图），渲染成与 `ItineraryPlannerAgent` **完全相同形状**的 `static_board`，所以下游适配器（`_board_to_days`、订单草稿、看板视图）全部无感复用。
+- 每个城市内置 **3 个「两天一晚」变体**，`重新生成` 时按 `variant_idx` 循环切换。
+- `total_distance_km` 预先烘焙进剧本，预览卡片无需 AMap 往返即可显示确定性公里数。
+- 只有用户**自定义偏好**时，才落到真实 LLM pipeline——兼顾 Demo 的「秒开稳定」与「展示真 AI」。
+
+---
+
+## 11. 持久化层：SQLite（10 张表）
 
 两个 Store 类，**共用同一个文件** `backend/data/travel_state.sqlite`（可由 `TRIP_STATE_DB_PATH` 覆盖）。该文件运行时生成、不入库（被 `.gitignore` 忽略）。
 
@@ -425,6 +440,8 @@ Layer 3  疲劳均衡 + 餐点插入
 | `poster_records` | `id` | 海报记录（标题/副标题/分享语/风格/版式） | **镜像** |
 
 > 「镜像表」= `save_state` 时按 `trip_id` 删除旧行、再用 TripState 里的列表重新插入，保证表内容与内存态一致。`trips`/`orders` 例外（upsert / 增量）。子表对 `trips` 有 `ON DELETE CASCADE` 外键，并为 `trip_id` 建索引。
+>
+> `create_demo_orders` 在建草稿时会先 `DELETE FROM orders WHERE trip_id=?` 再重建，避免历史草稿残留导致 `get_order_status` 返回用户未选的项。
 
 ### B. `FrontendAdapterStore`（`core/frontend_store.py`）—— 4 张适配表
 
@@ -439,7 +456,7 @@ Layer 3  疲劳均衡 + 餐点插入
 
 ---
 
-## 11. 两套 API 面
+## 12. 两套 API 面
 
 后端在同一个 FastAPI app 上暴露**两套**接口，**都由同一个 `TravelOrchestrator` 支撑**，只是面向不同消费者。
 
@@ -475,15 +492,16 @@ POST /trip/poster              生成海报
 POST /api/chat/stream            P1 流式聊天（脚本化「思考」按字回放）
 POST /api/chat                   P1 非流式聊天
 GET  /api/pois                   P3 候选项（自动注入 poi_images 配图 URL）
-POST /api/pois/pregenerate       后台：给 POI 预生成 Qwen 插画
+POST /api/pois/pregenerate       兼容端点（全量出图请用批量脚本）
 GET  /api/pois/{item_id}         单个 POI 详情
-POST /api/pois/transport/lookup  交通查询（硬编码）
-GET  /api/hotels /tips /spots /sight-detail   P1 内容（硬编码字典）
+POST /api/pois/transport/lookup  交通查询（硬编码班次）
+GET  /api/hotels /tips /spots /sight-detail   P1 内容（从 DianpingDB 派生）
 POST /api/itinerary/rerank       P4 AI 重排
 POST /api/itinerary/regenerate   P4 重新生成
 GET  /api/itinerary/preview      P5 行程预览
 POST /api/orders/draft           P6 订单草稿
 GET  /api/orders/{order_id}      P6 查询订单
+PATCH /api/orders/{order_id}     P6 修改订单（items / travelers / contactPhone）
 POST /api/orders/{order_id}/pay  P6 支付
 GET  /api/board/{order_id}       P7/P8 看板状态
 POST /api/board/{order_id}/checkin   打卡（204）
@@ -498,9 +516,9 @@ POST /api/poster                 生成海报
 
 ---
 
-## 12. 前端架构
+## 13. 前端架构
 
-`frontend/`，React 18 + Vite 5 + TypeScript。一条 8 步移动端演示主线。
+`frontend/`，React 18 + Vite 5 + TypeScript。**零 UI 库、零状态管理库**：纯 React Context + 内联样式。一条 8 步移动端演示主线。
 
 ```
 src/
@@ -515,10 +533,10 @@ src/
 │   ├── content.ts      /api/hotels · tips · spots · sight-detail
 │   ├── pois.ts         /api/pois · /pois/{id} · /pois/transport/lookup
 │   ├── itinerary.ts    /api/itinerary/rerank · regenerate · preview
-│   ├── order.ts        /api/orders/draft · {id} · {id}/pay
+│   ├── order.ts        /api/orders/draft · {id} · {id}/pay · patch
 │   └── board.ts        /api/board/* · weather · recommend/* · poster
-├── components/       MobileFrame / DemoOverlay / StepShell / NavBar /
-│                     Photo / SceneSwitcher / StatusBar / Atoms / mapProjection
+├── components/       MobileFrame / DemoOverlay / StreamingStatus / StepShell /
+│                     NavBar / Photo / SceneSwitcher / StatusBar / Atoms / mapProjection
 ├── pages/            Overview + P1~P8 + Summary / Kevin / Flow / Review
 └── styles/           tokens.css · components.css · app.css
 ```
@@ -528,13 +546,13 @@ src/
 | 路径 | 页面 | 别名 |
 |------|------|------|
 | `/` | Overview | （`*` 兜底也回到这里） |
-| `/p1` | P1_AskXiaotuan（问小团 chat） | — |
+| `/p1` | P1_AskXiaotuan（问小团 chat，10 阶段相位机流式回放） | — |
 | `/p2` | Step2_Identity（身份信息） | `/identity` |
-| `/p3` | Step3_Picker（POI 勾选） | `/picker` |
+| `/p3` | Step3_Picker（POI 勾选，最复杂页 ~1205 行） | `/picker` |
 | `/p4` | Step4_Rerank（AI 重排） | `/rerank` |
 | `/p5` | Step5_Preview（行程预览） | `/preview` |
 | `/p6` | Step6_Order（下单） | `/order` |
-| `/p7` | Step7_Board（看板时间轴） | `/board` |
+| `/p7` | Step7_Board（看板，旗舰页 ~1843 行） | `/board` |
 | `/p8` | Step8_BoardMap（地图看板） | `/board-map` |
 | — | Summary | `/summary` |
 | `/kevin` `/flow` `/review` | 独立演示页（用户画像 / 流程图 / 评审） | — |
@@ -543,9 +561,11 @@ src/
 
 **全局状态 `store.tsx`**：`AppProvider` 提供 `scene`(默认 `sz`) / `identity` / `selectedPOIs`(Set) / `poiPackages` / `paid` / `weather` / `orderId`(读 localStorage)，通过 `useApp()` 消费。
 
+**地图投影 `mapProjection.ts`**：P7 / P8 共用的 Web-Mercator slippy-map 助手——`worldX/worldY` 换算像素、`fitZoom` 求能塞下整条路线的最大缩放级、`centerWorld` 求几何中心、`visibleTiles` 只渲染视口所需的 OpenStreetMap 瓦片（带预加载，拖动不闪白）。
+
 ---
 
-## 13. 启动与托管
+## 14. 启动与托管
 
 ### `start.py`（开发一键启动，推荐）
 
@@ -560,7 +580,7 @@ src/
 
 ---
 
-## 14. 真实 vs Mock（权威对照表）
+## 15. 真实 vs Mock（权威对照表）
 
 | 模块 | 数据来源 | 说明 |
 |------|---------|------|
@@ -572,12 +592,14 @@ src/
 | `tools/amap.get_taxi_quote` | ❌ 固定公式 `18 + 6 × km` | 无真实打车 API |
 | `tools/amap.search_pois` | ✅ 真实 AMap，但当前不被 Agent 使用 | POI 走 DianpingDB |
 | `tools/orders.py` | ❌ 纯 SQLite mock | 无真实支付 |
-| `data/dianping_db.py` | 🔶 本地 287 个真实 POI（大众点评导出） | 候选/附近推荐唯一来源 |
+| `data/dianping_db.py` | 🔶 本地 220 个真实 POI（大众点评导出） | 候选/附近推荐唯一来源 |
+| `api/preset.py` | 🔶 确定性剧本（无 LLM） | 默认偏好时秒开稳定 |
 | `agents.py` 各 `_enhance_*` / `_llm_*` | ✅ 真实 LongCat LLM | 无 key 走启发式兜底 |
 | `graphs/smart_planner.py` | ✅ 真实 LLM Supervisor 路由 | 无 key 退化为顺序执行 |
 | `graphs/official_supervisor.py` | ❌ FakeMessagesListChatModel | 仅产 trace，不做真实路由 |
 | `clients/poster_image.py` | ✅ 真实 Qwen Image API | 无 key 跳过出图，仅返回文案 |
-| `api/` `/api/hotels` `/tips` `/spots` `/sight-detail` `/pois/transport/lookup` | ❌ 硬编码字典 | 内容型端点 |
+| `api/` `/api/hotels` `/tips` `/spots` `/sight-detail` | 🔶 从 DianpingDB 派生 | 内容型端点（非硬编码） |
+| `api/` `/api/pois/transport/lookup` | ❌ 硬编码 | 高铁车次时刻为演示数据 |
 | `api/` `/api/chat/stream` | ❌ 「思考」步骤硬编码 + 按字符流式回放 | 演示效果 |
 
-> 一句话总结：**事实（天气/路线/打卡/订单/POI）尽量真实或确定性；语义（选点/排序/话术/文案/配图）交给 AI；演示型内容（聊天脚本、内容卡）才是硬编码。**
+> 一句话总结：**事实（天气/路线/打卡/订单/POI）尽量真实或确定性；语义（选点/排序/话术/文案/配图）交给 AI；演示型内容（聊天脚本、交通班次）才是硬编码。**
