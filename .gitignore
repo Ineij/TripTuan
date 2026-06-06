@@ -27,6 +27,9 @@ backend/static/generated/**/*.png
 backend/static/generated/**/*.svg
 !backend/static/generated/transport/highspeed_train.png
 !backend/static/generated/transport/taxi.png
+!backend/static/generated/pois/
+!backend/static/generated/pois/csv-preview/
+!backend/static/generated/pois/csv-preview/*.png
 
 # ── Node / Vite (frontend) ──────────────────────────────
 node_modules/
