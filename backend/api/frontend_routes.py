@@ -773,6 +773,7 @@ def get_hotels(scene: Scene = Query("sz")) -> list[dict[str, Any]]:
     s = _scene(scene)
     db = get_db()
     hotels = db.search(s, categories=["酒店"], min_rating=3.5, limit=6)
+    generated_images = _STORE.get_poi_images_for_scene(s)
     return [
         {
             "id":     h["card_id"],
@@ -781,7 +782,7 @@ def get_hotels(scene: Scene = Query("sz")) -> list[dict[str, Any]]:
             "rating": h["rating"],
             "price":  h.get("price_per_person"),
             "tags":   h.get("tags", []),
-            "photo":  h.get("photo_url", ""),
+            "photo":  _generated_or_source_photo(h, generated_images),
             "source": "dianping",
         }
         for h in hotels
@@ -818,6 +819,7 @@ def get_spots(scene: Scene = Query("sz")) -> list[dict[str, Any]]:
     s = _scene(scene)
     db = get_db()
     sights = db.search(s, categories=["景点"], min_rating=4.0, limit=8)
+    generated_images = _STORE.get_poi_images_for_scene(s)
     return [
         {
             "id":     p["card_id"],
@@ -825,7 +827,7 @@ def get_spots(scene: Scene = Query("sz")) -> list[dict[str, Any]]:
             "area":   p["area"],
             "rating": p["rating"],
             "tags":   p.get("tags", [])[:3],
-            "photo":  p.get("photo_url", ""),
+            "photo":  _generated_or_source_photo(p, generated_images),
             "intro":  p.get("specialty") or p.get("area") or "",
             "source": "dianping",
         }
@@ -1148,6 +1150,14 @@ def _scene(scene: str | None) -> str:
     return "bj" if text in {"bj", "beijing", "北京"} else "sz"
 
 
+def _generated_or_source_photo(
+    poi: dict[str, Any],
+    generated_images: dict[str, str],
+) -> str:
+    """Prefer a generated POI image URL, falling back to the source photo."""
+    return generated_images.get(str(poi.get("card_id") or "")) or poi.get("photo_url", "")
+
+
 def _bulk_generate_poi_images(
     items: list[dict[str, Any]],
     scene: str,
@@ -1163,14 +1173,19 @@ def _bulk_generate_poi_images(
         if _STORE.get_poi_image(poi_id):
             continue
         # Build a minimal card dict for the prompt builder
+        item_type = {"sight": "景点", "food": "美食", "hotel": "酒店"}.get(
+            str(item.get("cat") or ""),
+            str(item.get("cat") or "景点"),
+        )
         card = {
             "card_id": poi_id,
             "title":   item.get("name") or item.get("title") or "",
             "area":    item.get("area") or "",
             "cat":     item.get("cat") or "sight",
-            "type":    item.get("cat") or "sight",
+            "type":    item_type,
             "tags":    (item.get("detail") or {}).get("tags") or [],
             "specialty": item.get("subDesc") or "",
+            "photo_url": item.get("imageUrl") or item.get("photo") or "",
         }
         try:
             result = generate_poi_image(card, scene)

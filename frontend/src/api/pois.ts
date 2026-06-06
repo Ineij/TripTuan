@@ -45,6 +45,8 @@ export interface POIItem {
   hotelStatus?: string;
   subDesc: string;
   photoSeed: string;
+  /** Original POI image URL from the source data, used when generated image is not available */
+  photo?: string;
   /** Pre-generated Qwen illustration URL — present once /pois/pregenerate has run */
   imageUrl?: string;
   badge?: { label: string; color: 'yellow' | 'red' | 'orange' };

@@ -132,7 +132,7 @@ def generate_trip_poster_png(
         "image_prompt": prompt,
         "render_tool": "QwenPosterImageTool",
         "render_format": "png",
-        "visual_style": "retro_netease_summary_meituan_yellow",
+        "visual_style": "xiaohongshu_trip_recap_zine_receipt_polaroid",
     }
 
 
@@ -156,37 +156,46 @@ def build_poster_prompt(state: TripState, poster_copy: dict[str, Any]) -> str:
     duration_min = route_plan.get('total_duration_minutes', 0)
 
     return f"""
-请生成一张 3:4 竖版 PNG 旅行回忆海报，整体气质是「诗意插画 + 文化旅行手账」，不要输出 HTML、SVG 或任何说明文字，直接给出完整图片。
+请生成一张 3:4 竖版 PNG 旅行回忆分享海报，整体气质是「小红书年度报告 + 音乐年度总结视觉 + 季节色彩卡片 + 数据榜单」。不要输出 HTML、SVG 或任何说明文字，直接给出完整图片。
 
 ════════════════════════════
 视觉风格要求（必须执行）
 ════════════════════════════
-- 整体质感：仿手绘水彩 + 旧地图纸张肌理，像一本私人旅行日记的封面或扉页。
-- 构图分区：
-    · 顶部（约 28%）：目的地城市全景速写线稿或标志建筑剪影，上方留白标注英文城市大字（如 SHENZHEN / BEIJING），字体用粗粗的复古衬线体（类 Clarendon / Trajan）。
-    · 中部（约 44%）：核心情绪插图区——画出一条手绘路线折线穿越城市地图碎片，线上标注行程节点名称（用中文手写风格），周围点缀邮票、印章、水彩晕染色块。
-    · 底部（约 28%）：数据总结板块，像旅行日记脚注，展示人数、打卡站数、总距离、天气符号、出发地→目的地箭头文字，用复古打字机字体+中文混排。
-- 配色：
-    · 主色调：米白旧纸（#F5EDD8）/ 墨绿（#2D4A3E）/ 暖赤陶（#C1440E）/ 美团黄（#FFD100，作为点睛色，用于一个标题装饰条或底色印章）
-    · 绝对不要：廉价渐变、霓虹色、过度饱和的数字风格背景。
-- 文字层次：
-    1. 巨大英文城市名（顶部）
-    2. 中文主标题「{poster_copy.get("title", destination + " · 旅行回忆")}」（中部）
-    3. 中文副标题「{poster_copy.get("subtitle", travel_date + " " + str(people_count) + "人同行")}」（中部偏下）
-    4. 一句诗意核心文案（见下方），字号中等，排在路线图旁边或底部
-    5. 行程数据（最底部，小字）
-- 插画细节：建筑/景点速写轮廓不能完全写实，要有插画感、减法留白，不要塞满整个画面。
+- 核心参考：网易云音乐年度总结、小红书年度报告九宫格、季节色彩卡片、柔光渐变、光轨、抽象纹理、排行榜、月度时间线、漂浮小封面，以及“永不结束的夏天 / 人生海海”这种文艺旅行封面。
+- 海报必须像一个“年度旅行报告”页面，不像传统旅行广告，不像景区宣传画，不像商务 PPT，也不要像纸质票根手账。
+- 画面可选择以下版式之一，但必须完整、有高级设计感：
+    · 柔光关键词版：深色或彩色渐变背景，中心一个巨大中文关键词，周围有环形光轨、柔焦彩虹光束、漂浮小人或小卡片，几句半透明引语作为回忆片段。
+    · 季节卡片版：高饱和但干净的春绿、夏蓝、秋黄、冬白其中一种作为大底色，带抽象笔触纹理、风/雨/雪/光点，放一个小小漂浮照片卡片，左下角排大标题和数据。
+    · 榜单信息版：蓝紫渐变背景，多个彩色横向 3D 榜单条堆叠，展示 POI 排名、次数、类别，像年度歌单排行榜。
+    · 月度时间线版：浅青到白色流光背景，左侧月份刻度，右侧漂浮头像/圆形照片节点，形成一年路线的感觉。
+- 画面要有“数字年度总结”的高级感：柔雾、光晕、透明叠层、抽象颗粒、干净大留白；不要脏乱拼贴，不要小票、条形码、胶带、过多贴纸。
+- 文字风格：巨大中文标题 + 粗黑中文数据文案 + 少量半透明小字。中文要清晰，字数少，有层次；英文只作为少量装饰，如 YEARLY ROUTE / CITY RECAP。
+- 配色要接近参考图：黑紫彩虹柔光、紫色雾面、荧光春绿、清透夏蓝、暖黄秋色、冰白冬色、蓝紫榜单。可以鲜艳，但必须干净、通透、高级。
+- 图片/插画处理：可以使用圆形小封面、漂浮照片卡片、模糊城市光影、抽象地图线、路线点、天气符号。不要真实人物大脸，不要社交媒体 UI。
+- 强制保留原框架信息，但表达方式要像“旅行人格报告”，不是机械行程单。必须包含：城市旅行标题、旅行人格、真实风景感背景、足迹地图/点亮行程点、高光瞬间、适合分享到社交平台的长图总结。
+- 足迹地图必须与其他页面同一视觉体系：用风景照片压暗背景、玻璃拟态路线卡、发光点位，不要做成浅色普通地图 UI。
+- 最终分享长图必须是文艺旅行封面：全幅真实风景照片背景（北京偏古建日光/天坛质感，深圳偏海边、湾区、长路、落日），大面积自然光和留白，覆盖一个巨大手写感中文标题（类似“永不结束的夏天 / 人生海海”），底部只放少量旅行数据和一句回忆文案。不要蓝色纯色底，不要格子纸，不要米白纸张，不要两张手机截图，不要深色 UI 卡片堆叠，不要普通 PPT 信息页。
 
 ════════════════════════════
 文案内容（必须写入海报）
 ════════════════════════════
-核心一句话文案（手写风格置于海报中部）：
+1）城市旅行标题（巨大中文标题，必须清楚；例如“北京之行 / 深圳之行”，不要写无关抽象词）：
+{poster_copy.get("title", destination + " · 旅行回忆")}
+
+2）旅行人格（中号中文，像年度报告的人设标签；背景要有城市风景照片感，北京偏天坛/古建光影，深圳偏海边落日/湾区水面）：
+{poster_copy.get("subtitle", travel_date + " " + str(people_count) + "人同行")}
+
+3）核心触动文案（可作为年度报告里的半透明引语、季节卡片副标题或榜单说明；要像用户愿意发朋友圈/小红书的句子）：
 {poster_copy.get("share_text", "每一次出发，都是对日常的温柔反抗。")}
 
-行程节点（路线图上按顺序标注，不要编造其他地名）：
+4）足迹地图 / 点亮行程点（必须出现一个抽象地图或路线图，用亮点标出总共点亮的行程点；把去过的地方名称高光出来，按顺序标注，不要编造其他地名）：
 {itinerary}
 
-行程数据标注（底部脚注区）：
+5）旅行高光瞬间（从行程节点里挑一个，写成“最像你的一站 / 最值得再来的一站 / 今天最亮的一站”的感觉；不要只复述地名）
+
+6）社交分享长图总结（必须像朋友圈/小红书可转发的文艺旅行封面，不是单页卡片；使用全幅风景照片背景 + 大号手写中文标题 + 少量数据点 + 一句有情绪的 ending；不要蓝色纯色底，不要格子纸，不要做成两张手机截图，不要堆 UI 卡片；包含出行数据、高光地点、陪伴/路线 ending）
+
+行程数据标注（必须出现，可做成年度报告数据、小标题、榜单右侧次数或底部脚注）：
 - {departure} → {destination}
 - {travel_date} · {people_count} 人
 - 天气：{weather_cond} {temp}°C
@@ -196,13 +205,15 @@ def build_poster_prompt(state: TripState, poster_copy: dict[str, Any]) -> str:
 ════════════════════════════
 品牌水印要求（极小字，底部角落）
 ════════════════════════════
-- 可出现极小字 "by ASK XIAOTUAN · LOCAL ROUTE INTELLIGENCE" 作为版权水印，不出现任何真实品牌 logo。
+- 可出现极小字 "by ASK XIAOTUAN · LOCAL ROUTE INTELLIGENCE" 或 "小go · 现在就出发" 作为底部角落水印。
+- 不出现任何真实平台 UI，不出现小红书界面、点赞评论栏、用户名、真实品牌 logo。
 - 不要出现任何网址链接。
 
 ════════════════════════════
 输出要求
 ════════════════════════════
 - 直接输出一张完整的 PNG 图片，3:4 竖版，分辨率清晰，适合手机竖屏分享朋友圈。
+- 视觉必须像一张完成度高的社交媒体年度报告海报，不要像未完成草图。
 - 不要输出任何说明文字、HTML 代码、Markdown 标记。
 """.strip()
 
@@ -323,31 +334,56 @@ _CITY_CN: dict[str, str] = {
     "bj": "北京",
 }
 
-# Negative prompt aligned with the city-illustration style (flat editorial, no
-# text / photoreal / 3D). Shared by every POI and transport render.
+# Negative prompt aligned with the POI lifestyle-photo style. Shared by every
+# POI and transport render.
 _NEGATIVE_PROMPT = (
-    "text, letters, numbers, logo, watermark, interface elements, UI, "
-    "people close-up, realistic photography, photorealism, 3D rendering, "
-    "messy details, excessive details, low quality, blurry, cluttered, "
-    "neon, harsh colors, brand logo, mascot, franchise trade dress"
+    "watermark, social media interface, phone screenshot frame, app UI, "
+    "caption text, hashtags, messy text, garbled typography, oversized logo, "
+    "brand mascot, identifiable franchise trade dress, people close-up, "
+    "crowded tourists, harsh flash, dirty facade, cluttered storefront, "
+    "overexposed highlights, underexposed shadows, low quality, blurry, "
+    "fisheye distortion, fake plastic texture, neon cyberpunk colors, "
+    "real-estate listing photo, stock photo, overprocessed HDR, CGI render, "
+    "cheap commercial poster, oversaturated travel ad, shiny plastic surfaces"
 )
 
-# User-supplied flat city-illustration prompt. {subject} is filled with the POI
-# identity and local metadata so scenic spots do not collapse into generic
-# city-skyline images.
-_CITY_ILLUSTRATION_TEMPLATE = """Create a square 1:1 city illustration based on real-world reference photos. First search and study authentic street-view or travel photography of {subject}, accurately extracting its real architectural silhouette, skyline proportion, landmark scale, spatial hierarchy, street structure, and local environmental features. Then transform the real scene into a flat, colorful editorial illustration.
+# User-supplied Xiaohongshu-inspired lifestyle-photo prompt. {subject} is filled
+# with POI identity and local metadata so generated images stay tied to the
+# place while sharing one premium visual language.
+_POI_LIFESTYLE_PHOTO_TEMPLATE = """Create a square 1:1 premium lifestyle travel photo for a mobile travel recommendation card.
 
-The image should use a wide-angle urban postcard composition, with a clear foreground, midground, and background hierarchy. The main landmark or architectural subject should occupy the visual center or slightly off-center position, shown from a human-eye-level to slightly low-angle perspective, creating a sense of grandeur without distortion. Maintain realistic spatial scale: buildings, streets, water, trees, mountains, or city blocks should follow the proportions of the real location, but be simplified into clean geometric shapes.
+Reference direction: premium Instagram editorial travel photography, boutique lifestyle magazine, minimalist storefront / hotel / city-walk aesthetics, calm high-end composition, refined material texture, tasteful negative space. Keep the approachable local-travel feeling, but make it more elegant and less commercial. Do not include any social app interface, captions, hashtags, usernames, likes, or phone frame.
 
-Subject accuracy requirements: the illustration must be about this exact scenic POI, not a generic city skyline. The named place itself must be the dominant visual subject and occupy the central 55-70% of the image. Use the POI's real category, facade, roofline, gate, plaza, lake, bridge, trees, mountain, waterfront, courtyard, exhibition hall, tower, or park structure as the main silhouette. Do not replace the location with repeated generic high-rise buildings, repeated generic riverside skylines, or a generic CBD postcard. Vary the viewpoint according to the place: museum entrance facade, historic gate, temple/courtyard axis, park path and lake, mountain trail, waterfront promenade, plaza sculpture, observation tower, or distinctive neighborhood street. The foreground should contain location-specific approach context such as steps, paving, water, trees, bridge, wall, slope, or square, not generic blocky buildings.
+Subject: {subject}
 
-Visual style: flat illustration, modern travel poster aesthetic, soft digital gouache texture, clean blocky shapes, simplified architecture, slightly grainy paper texture, crisp silhouette, no photorealism, no 3D rendering, no excessive details. The atmosphere should feel bright, optimistic, fresh, and artistic, similar to a high-quality editorial city illustration.
+Image goal:
+- Use the original POI source photo as the primary visual reference whenever it is supplied to the image model. Preserve the real facade, sign position, entrance layout, greenery, street context, landmark silhouette, and spatial structure; improve the image rather than inventing a different place.
+- Preserve the real place category and local atmosphere. The image must look like this exact POI/source scene, not a generic city stock photo.
+- If the POI is a cafe, dessert shop, restaurant, hotel, or small store, make the storefront, entrance facade, awning, doorway, outdoor seating, window display, plants, paving, and warm interior glow the main visual subject.
+- If the POI is a scenic spot, museum, park, plaza, waterfront, mountain, or landmark, make its recognizable entrance, path, courtyard, lake, bridge, trees, skyline, or main architectural silhouette the subject, photographed like a stylish city-walk recommendation.
+- For brand-sensitive venues, use a brand-neutral storefront inspired by the location and category. Signage may be minimal, abstract, or softly unreadable. Do not create exact logos or franchise trade dress.
 
-Color palette: vibrant but slightly desaturated colors, low-saturation cyan blue sky, soft turquoise, warm cream yellow, coral pink, muted orange, light lavender, pale mint green, and deep navy blue shadows. Use strong sunlight and high-key lighting, with large areas of bright sky and soft cloud shapes. Shadows should be simplified into flat color blocks, using cool blue and muted purple tones. The overall palette should be colorful, airy, harmonious, and slightly retro, avoiding overly neon or harsh colors.
+Unified visual style:
+- Photoreal but softly enhanced, high-end Instagram editorial photography, not illustration, not 3D render.
+- Natural window/daylight, soft directional shadows, gentle filmic contrast, calm highlights, matte texture, no harsh HDR.
+- Muted warm neutrals, ivory, stone beige, champagne cream, warm wood, olive/sage green, dusty blue-gray, soft terracotta, and deep charcoal accents.
+- Elegant, quiet, architectural, boutique, design-forward, uncluttered, premium but approachable; a beautiful travel app card image that feels curated rather than generated.
+- Use a subtle film-photography feeling: clean grain, soft lens falloff, realistic depth, high dynamic range handled gently, no plastic-smooth surfaces.
 
-Composition requirements: square format, 1:1 aspect ratio, balanced visual weight, large open sky area, strong landmark silhouette, layered city skyline, clean negative space, poster-like layout, refined and decorative but not crowded. The illustration should feel like a premium travel app poster or city guide cover.
+Camera angle and composition:
+- Match the user's Xiaohongshu reference angle as closely as the source photo allows: front-facing or near-front-facing facade/entrance view, human-eye-level to very slightly low angle, as if standing across the sidewalk looking directly at the storefront or POI entrance.
+- Keep vertical architectural lines straight and parallel. Correct perspective distortion where possible; avoid diagonal tourist-snapshot angles unless the source image absolutely requires them.
+- The main facade, sign wall, doorway, awning, hotel entrance, park sign, or landmark entrance should occupy the central 65-80% of the frame.
+- Use a clean centered composition with the subject filling the card, similar to a storefront feature photo in a lifestyle guide. Crop to remove messy side edges, random cars, trash bins, excessive road, and irrelevant upper floors when they do not define the POI.
+- Square 1:1 card crop with enough clean top/bottom breathing room for rounded-card UI cropping.
+- Prefer one strong focal point: doorway, awning, facade, terrace, path, lake edge, bridge, park sign, or landmark entrance.
+- For source photos shot at an awkward side angle, subtly recompose toward a straighter, more frontal view while preserving the actual identity, signage location, materials, and spatial structure.
+- No close-up faces. At most a few tiny distant passersby, not the subject.
 
-No text, no letters, no numbers, no logos, no watermark, no interface elements, no people close-up, no realistic photography, no messy details.
+Quality requirements:
+- Ultra clean, beautiful, cohesive across a grid of cards.
+- No dirty storefronts, no visual clutter, no over-sharpening, no harsh HDR, no dark night scene unless the POI is specifically nightlife.
+- No watermark, no UI screenshot, no app chrome, no readable social-media text.
 
 Aspect ratio: 1:1"""
 
@@ -432,11 +468,13 @@ def _poi_subject(poi: dict[str, Any], scene: str) -> str:
         details.append(f"specific type: {subcategory}")
     if tags:
         details.append(f"local visual clues/tags: {tags}")
+    if poi.get("photo_url"):
+        details.append(f"original source photo URL: {poi['photo_url']}")
     return "; ".join(details)
 
 
 def _poi_image_prompt(poi: dict[str, Any], scene: str) -> str:
-    return _CITY_ILLUSTRATION_TEMPLATE.format(subject=_poi_subject(poi, scene))
+    return _POI_LIFESTYLE_PHOTO_TEMPLATE.format(subject=_poi_subject(poi, scene))
 
 
 def _transport_image_prompt(mode: str) -> str:
@@ -482,7 +520,7 @@ def _render_png(prompt: str, file_name: str, settings: PosterImageSettings) -> d
 
 
 def generate_poi_image(poi: dict[str, Any], scene: str) -> dict[str, Any]:
-    """Generate a 1:1 flat editorial city illustration for a single POI.
+    """Generate a unified 1:1 lifestyle-photo image for a single POI.
 
     Returns a dict with keys:
       - status: 'generated' | 'failed'
@@ -494,7 +532,12 @@ def generate_poi_image(poi: dict[str, Any], scene: str) -> dict[str, Any]:
     prompt   = _poi_image_prompt(poi, scene)
 
     if not settings.enabled:
-        return {"status": "failed", "error": "POSTER_IMAGE_API_KEY not configured.", "poi_id": poi_id}
+        return {
+            "status": "failed",
+            "error": "POSTER_IMAGE_API_KEY not configured.",
+            "poi_id": poi_id,
+            "prompt": prompt,
+        }
 
     result = _render_png(prompt, f"poi_{poi_id}.png", settings)
     result["poi_id"] = poi_id

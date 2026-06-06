@@ -1109,7 +1109,7 @@ function PosterSheet({ scene }: { scene: Scene }) {
     <>
       <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 4 }}>行程总结海报</div>
       <div className="text-tiny text-muted" style={{ marginBottom: 14, lineHeight: 1.55 }}>
-        由 AI 生成一张诗意旅行回忆长图 · 3:4 竖版 · 适合朋友圈分享
+        由 AI 生成一张年度旅行 recap 长图 · 3:4 竖版 · 适合朋友圈 / 小红书分享
       </div>
 
       {/* Preview / result area */}
