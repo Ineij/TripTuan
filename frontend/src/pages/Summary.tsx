@@ -4,6 +4,7 @@ import { MobileFrame } from '../components/MobileFrame';
 import { StatusBar } from '../components/StatusBar';
 import { GoMark } from '../components/Atoms';
 import { Photo } from '../components/Photo';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp } from '../store';
 import type { Scene } from '../types';
 import { getPreview } from '../api/itinerary';
@@ -238,7 +239,19 @@ function CoverSlide({ data, loading }: { data: SummaryData; loading: boolean }) 
   return (
     <section style={{ height: '100%', padding: '58px 36px 24px', background: data.gradient, position: 'relative' }}>
       {loading && (
-        <div style={{ position: 'absolute', top: 18, right: 22, fontSize: 13, opacity: 0.6 }}>加载中…</div>
+        <div style={{ position: 'absolute', top: 18, left: 22, right: 22 }}>
+          <StreamingStatus
+            title="正在生成旅程总结"
+            tone="dark"
+            compact
+            messages={[
+              '读取最终行程',
+              '整理路线足迹',
+              '提炼高光地点',
+              '生成回顾章节',
+            ]}
+          />
+        </div>
       )}
       <div style={chapterStyle}>——— CHAPTER 01 ———</div>
       <div style={{ marginTop: 26, fontSize: 20, fontWeight: 700 }}>{data.date || '旅程回顾'}</div>

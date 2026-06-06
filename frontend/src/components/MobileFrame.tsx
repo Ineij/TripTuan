@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
+import { StreamingStatus } from './StreamingStatus';
 
 interface Props {
   children: ReactNode;
@@ -14,6 +16,15 @@ export function MobileFrame({ children, fullPage }: Props) {
   // Auto-scale the phone so the *entire* device (and thus the full itinerary
   // inside it) always fits the browser window — no manual zoom needed.
   const [scale, setScale] = useState(1);
+  const location = useLocation();
+  const [entering, setEntering] = useState(true);
+
+  useEffect(() => {
+    if (fullPage) return undefined;
+    setEntering(true);
+    const timer = window.setTimeout(() => setEntering(false), 650);
+    return () => window.clearTimeout(timer);
+  }, [fullPage, location.pathname]);
 
   useEffect(() => {
     if (fullPage) return;
@@ -56,6 +67,20 @@ export function MobileFrame({ children, fullPage }: Props) {
             style={{ animation: 'pagePush .42s cubic-bezier(.32,.72,.32,1.18) both' }}
           >
             {children}
+            {entering && (
+              <div style={{ position: 'absolute', left: 14, right: 14, top: 96, zIndex: 90, pointerEvents: 'none' }}>
+                <StreamingStatus
+                  title="页面加载中"
+                  compact
+                  messages={[
+                    '准备页面结构',
+                    '读取本页数据',
+                    '同步展示状态',
+                    '马上可以操作',
+                  ]}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

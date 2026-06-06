@@ -83,17 +83,15 @@ class TripStateStore:
     ) -> dict[str, Any]:
         now = _utc_now()
         with self._connect() as connection:
-            existing = {
-                row["card_id"]: row
-                for row in connection.execute(
-                    "SELECT * FROM orders WHERE trip_id = ?",
-                    (trip_id,),
-                ).fetchall()
-            }
+            # (Re)create the draft from scratch so the order set faithfully
+            # reflects the cards passed in. The orders table is persistent, so
+            # without this it accumulates rows from earlier drafts (a different
+            # or auto-balanced selection) and get_order_status would return
+            # stale items the user never picked. create_demo_orders runs only
+            # at draft time (before payment), so clearing here is safe.
+            connection.execute("DELETE FROM orders WHERE trip_id = ?", (trip_id,))
             for index, card in enumerate(cards, start=1):
                 card_id = str(card.get("card_id") or card.get("id") or f"card_{index}")
-                if card_id in existing:
-                    continue
                 order_id = f"ord_{trip_id}_{index:02d}"
                 payload = {
                     "card_id": card_id,

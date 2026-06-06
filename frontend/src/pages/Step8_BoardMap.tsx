@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { MobileFrame } from '../components/MobileFrame';
 import { StatusBar } from '../components/StatusBar';
 import { GoMark } from '../components/Atoms';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp } from '../store';
 import { callRide, checkInStation, getBoardState, getPreview, getPickerItems, getWeather } from '../api';
 import { worldX, worldY, fitZoom, centerWorld, visibleTiles, type LatLng } from '../components/mapProjection';
@@ -46,6 +47,7 @@ export default function Step8_BoardMap() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [weatherText, setWeatherText] = useState('');
   const [rideQuote, setRideQuote] = useState<{ km: number; estimate: number; etaMin: number; carType: string } | null>(null);
+  const [loadingRoute, setLoadingRoute] = useState(false);
   const orderId = window.localStorage.getItem('xiaotuan_order_id') ?? '';
 
   // Slippy-map view state — viewport top-left in world pixels at `zoom`.
@@ -58,10 +60,13 @@ export default function Step8_BoardMap() {
 
   // ── Load route data ──────────────────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
     setStations([]);
     setActiveId(null);
+    setLoadingRoute(true);
 
     Promise.all([getPreview(scene), getPickerItems(scene)]).then(([preview, items]) => {
+      if (cancelled) return;
       type PoiWithCoords = { id: string; name: string; cat: string; rating: number; lat?: number; lng?: number };
       const pois = items.filter((it) => it.cat !== 'transport') as unknown as PoiWithCoords[];
       const poiByName: Record<string, PoiWithCoords> = {};
@@ -90,7 +95,13 @@ export default function Step8_BoardMap() {
       setStations(built);
       if (built.length > 0) setActiveId(built[0].id);
       // (fit-to-bounds runs in a dedicated effect once stations + width are known)
-    }).catch(() => undefined);
+    }).catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoadingRoute(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [scene]);
 
   // ── Measure map width + fit the whole route into the viewport ────────────
@@ -294,7 +305,7 @@ export default function Step8_BoardMap() {
 
           {/* Top-left info chip */}
           <div style={{ position: 'absolute', top: 10, left: 10, padding: '6px 12px', borderRadius: 999, background: 'rgba(255,255,255,.94)', fontSize: 11.5, fontWeight: 700, boxShadow: 'var(--shadow-1)' }}>
-            {filtered.length > 0 ? `${tab === '总览' ? '全程' : tab} · ${filtered.length} 站` : '加载中…'}
+            {filtered.length > 0 ? `${tab === '总览' ? '全程' : tab} · ${filtered.length} 站` : loadingRoute ? '同步中…' : '暂无路线'}
           </div>
 
           {/* Weather chip */}
@@ -314,9 +325,23 @@ export default function Step8_BoardMap() {
           {/* Empty state */}
           {stations.length === 0 && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: 'rgba(255,255,255,.9)', borderRadius: 12, padding: '16px 24px', fontSize: 13.5, fontWeight: 700, textAlign: 'center' }}>
-                🗺️ 正在加载地图数据…
-              </div>
+              {loadingRoute ? (
+                <StreamingStatus
+                  title="正在加载地图数据"
+                  compact
+                  style={{ width: 300, background: 'rgba(255,255,255,.94)' }}
+                  messages={[
+                    '读取行程预览',
+                    '匹配 POI 坐标',
+                    '生成地图站点',
+                    '铺设路线连线',
+                  ]}
+                />
+              ) : (
+                <div style={{ background: 'rgba(255,255,255,.9)', borderRadius: 12, padding: '16px 24px', fontSize: 13.5, fontWeight: 700, textAlign: 'center' }}>
+                  暂无可显示路线
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -324,6 +349,18 @@ export default function Step8_BoardMap() {
         {/* Bottom panel */}
         <div style={{ padding: 14 }}>
           {/* Active station card */}
+          {loadingRoute && !cur && (
+            <StreamingStatus
+              title="正在同步路线站点"
+              messages={[
+                '读取 DAY 1 和 DAY 2',
+                '过滤交通和自理节点',
+                '匹配地图坐标',
+                '刷新站点列表',
+              ]}
+            />
+          )}
+
           {cur && (
             <div className="card fade-up" style={{ marginBottom: 12 }}>
               <div className="h-between" style={{ marginBottom: 6 }}>

@@ -2,8 +2,8 @@
 DianpingDB — local POI database loaded from Dianping JSON exports.
 
 Two files are bundled:
-  backend/data/bj_poi_dzdp.json   (179 POIs, Beijing)
-  backend/data/sz_poi_dzdp.json   (108 POIs, Shenzhen)
+  backend/data/bj_poi_dzdp.json   (110 POIs, Beijing)
+  backend/data/sz_poi_dzdp.json   (110 POIs, Shenzhen)
 
 This is the single source of truth for all candidate-card selection and
 real-time nearby recommendations.  AMap is still used for weather, routing,

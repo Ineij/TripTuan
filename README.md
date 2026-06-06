@@ -128,8 +128,8 @@ hackathon/
 │   │
 │   ├── data/                      # POI 数据 + SQLite 库
 │   │   ├── dianping_db.py         # DianpingDB —— 本地 POI 库（选点 / 附近推荐的唯一数据源）
-│   │   ├── bj_poi_dzdp.json       # 北京 POI（179 条）
-│   │   ├── sz_poi_dzdp.json       # 深圳 POI（108 条）
+│   │   ├── bj_poi_dzdp.json       # 北京 POI（110 条）
+│   │   ├── sz_poi_dzdp.json       # 深圳 POI（110 条）
 │   │   └── travel_state.sqlite    # 运行时状态库（运行时生成，不入库）
 │   │
 │   ├── scripts/
@@ -309,7 +309,7 @@ POST /trip/poster            生成海报
 
 所有候选卡片与「附近推荐」的 POI 都来自本地大众点评导出的 JSON（**不是** AMap 检索）。
 
-- **文件**：`backend/data/bj_poi_dzdp.json`（179）、`sz_poi_dzdp.json`（108），共 **287** 条。
+- **文件**：`backend/data/bj_poi_dzdp.json`（110）、`sz_poi_dzdp.json`（110），共 **220** 条。
 - **加载**：`backend/data/dianping_db.py` 的 `get_db()` 单例，启动时归一化字段。
 - **类型**：`景点` / `美食` / `酒店`（由原始「一类」映射而来）。
 - **稳定 ID**：`card_id = "dzdp_" + md5("{scene}:{name}")[:10]`，同名 POI 在不同城市互不冲突，配图文件名也据此命名。

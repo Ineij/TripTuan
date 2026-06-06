@@ -35,11 +35,30 @@ export interface CreateDraftReq {
   contactPhone?: string;
 }
 
+const draftRequests = new Map<string, Promise<OrderDraft>>();
+
+function draftRequestKey(req: CreateDraftReq): string {
+  return JSON.stringify({
+    scene: req.scene,
+    picks: [...req.picks].sort(),
+    travelers: req.travelers,
+    contactPhone: req.contactPhone ?? '',
+  });
+}
+
 export async function getOrderDraft(req: CreateDraftReq): Promise<OrderDraft> {
-  return request<OrderDraft>('/api/orders/draft', {
+  const key = draftRequestKey(req);
+  const pending = draftRequests.get(key);
+  if (pending) return pending;
+
+  const promise = request<OrderDraft>('/api/orders/draft', {
     method: 'POST',
     body: JSON.stringify(req),
+  }).finally(() => {
+    draftRequests.delete(key);
   });
+  draftRequests.set(key, promise);
+  return promise;
 }
 
 export async function patchOrder(
