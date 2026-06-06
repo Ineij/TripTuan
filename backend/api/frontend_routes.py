@@ -17,12 +17,15 @@ from backend.clients.llm import chat_text
 from backend.clients.poster_image import generate_poi_image
 from backend.core.frontend_store import FrontendAdapterStore
 from backend.data.dianping_db import get_db
+from backend.api import preset
 
 
 router = APIRouter(prefix="/api", tags=["frontend-compatible"])
 _ORCHESTRATOR: Any | None = None
 
 Scene = str
+TRANSPORT_TRAIN_IMAGE_URL = "/static/generated/transport/highspeed_train.png"
+TRANSPORT_TAXI_IMAGE_URL = "/static/generated/transport/taxi.png"
 
 
 def attach_orchestrator(orchestrator: Any) -> None:
@@ -279,9 +282,50 @@ def _structured_request(scene: str, identity: dict[str, Any] | None = None) -> d
     return base
 
 
+def _ensure_preset_trip(
+    scene: str,
+    identity: dict[str, Any] | None = None,
+    variant_idx: int | None = None,
+) -> dict[str, Any]:
+    """Build (or rebuild) a scene's deterministic preset trip and persist it.
+
+    Keeps the existing trip_id (so orders stay linked) and cycles variants when
+    an explicit ``variant_idx`` is passed (重新生成).
+    """
+    orchestrator = _orchestrator()
+    session = _STORE.get_session(scene) or {}
+    trip_id = session.get("trip_id")
+    if variant_idx is None:
+        variant_idx = int(session.get("preset_variant") or 0)
+    request = _structured_request(scene, identity)
+    state, resolved = preset.build_preset_state(
+        scene, request, variant_idx=variant_idx, trip_id=trip_id
+    )
+    orchestrator._save_state(state)
+    _STORE.save_session(
+        scene,
+        {
+            "scene": scene,
+            "trip_id": state.trip_id,
+            "preset": True,
+            "preset_variant": resolved,
+            "selected_card_ids": [c["card_id"] for c in state.selected_cards],
+            "last_stage": state.stage,
+            "updatedAt": _now(),
+        },
+    )
+    return state.to_dict()
+
+
 def _ensure_trip(scene: str, identity: dict[str, Any] | None = None) -> dict[str, Any]:
     orchestrator = _orchestrator()
     session = _STORE.get_session(scene)
+
+    # Default scene preview should always reflect the bundled script, even if a
+    # previous run cached an older/non-preset trip in the local session store.
+    if preset.is_default_preset(scene, identity):
+        return _ensure_preset_trip(scene, identity)
+
     if session and session.get("trip_id"):
         try:
             state = orchestrator.get_trip(str(session["trip_id"]))
@@ -348,6 +392,14 @@ def _select_and_rerank(
     identity: dict[str, Any] | None,
     prev_variant_id: str | None,
 ) -> dict[str, Any]:
+    # Default preset scene → serve the scripted itinerary directly (no agent).
+    # 重新生成 (prev_variant_id present) advances to the next script variant.
+    if preset.is_default_preset(scene, identity):
+        session = _STORE.get_session(scene) or {}
+        current = int(session.get("preset_variant") or 0)
+        target = current + 1 if prev_variant_id else current
+        return _ensure_preset_trip(scene, identity, variant_idx=target)
+
     orchestrator = _orchestrator()
     state = _ensure_trip(scene, identity)
     selected_ids = _resolve_selected_ids(picks, state.get("candidate_cards", []))
@@ -405,6 +457,44 @@ def _ensure_routed_trip(trip_id: str) -> dict[str, Any]:
     return state
 
 
+def _compact_place_name(value: Any) -> str:
+    text = str(value or "").replace("（", "(").replace("）", ")")
+    return re.sub(r"\s+", "", text).strip()
+
+
+def _same_place_name(left: Any, right: Any) -> bool:
+    a = _compact_place_name(left)
+    b = _compact_place_name(right)
+    return bool(a and b and (a == b or a in b or b in a))
+
+
+def _route_point_for_name(scene: str, name: str) -> dict[str, Any] | None:
+    for poi in get_db().all(scene):
+        if not _same_place_name(name, poi.get("title")):
+            continue
+        if poi.get("lat") is None or poi.get("lon") is None:
+            return None
+        return {
+            **poi,
+            "name": poi.get("title"),
+            "lng": poi.get("lon"),
+        }
+    return None
+
+
+def _deterministic_ride_km(scene: str, from_name: str, to_name: str) -> float:
+    seed = sum(ord(ch) for ch in f"{scene}:{from_name}->{to_name}")
+    base = 2.0 if scene == "sz" else 3.0
+    return round(base + (seed % 36) / 10, 1)
+
+
+def _transport_image_for_action(action: Any) -> tuple[str, str]:
+    text = str(action or "")
+    if "第二天" in text or "继续出发" in text or "出租车" in text:
+        return TRANSPORT_TAXI_IMAGE_URL, "taxi"
+    return TRANSPORT_TRAIN_IMAGE_URL, "highspeed-train"
+
+
 def _frontend_picker_items_from_state(scene: str, state: dict[str, Any]) -> list[dict[str, Any]]:
     items = _transport_items(scene)
     items.extend(
@@ -415,13 +505,20 @@ def _frontend_picker_items_from_state(scene: str, state: dict[str, Any]) -> list
 
 
 def _transport_items(scene: str) -> list[dict[str, Any]]:
+    def with_transport_image(item: dict[str, Any]) -> dict[str, Any]:
+        enriched = deepcopy(item)
+        enriched["photo"] = TRANSPORT_TRAIN_IMAGE_URL
+        enriched["imageUrl"] = TRANSPORT_TRAIN_IMAGE_URL
+        enriched["photoSeed"] = "highspeed-train"
+        return enriched
+
     # Use _TRANSPORT_BY_SCENE for hardcoded transport data; fall back to
     # PICKER_ITEMS_BY_SCENE entries that carry cat=="transport" for legacy compat.
     hardcoded = _TRANSPORT_BY_SCENE.get(scene, [])
     if hardcoded:
-        return [deepcopy(item) for item in hardcoded]
+        return [with_transport_image(item) for item in hardcoded]
     return [
-        deepcopy(item)
+        with_transport_image(item)
         for item in PICKER_ITEMS_BY_SCENE.get(scene, [])
         if item.get("cat") == "transport"
     ]
@@ -455,7 +552,7 @@ def _candidate_to_picker_item(card: dict[str, Any], index: int) -> dict[str, Any
         "subDesc":  sub_desc[:30],
         "photoSeed": _photo_seed(card.get("title") or card["card_id"]),
         "photo":    card.get("photo_url", ""),
-        "preselect": index <= 6,
+        "preselect": bool(card["preselect"]) if "preselect" in card else index <= 6,
         "detail": {
             "tags":  card.get("tags") or [],
             "intro": sub_desc,
@@ -495,21 +592,34 @@ def _state_to_preview(scene: str, state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _card_photo_url(card_id: str | None) -> str:
+    """Look up a POI's bundled image (商家图片) by card_id, for itinerary/order cards."""
+    if not card_id:
+        return ""
+    card = get_db().get_by_id(str(card_id))
+    return (card.get("photo_url") or "") if card else ""
+
+
 def _board_to_days(board: list[dict[str, Any]], scene: str) -> list[dict[str, Any]]:
     if not board:
         return deepcopy(ITINERARY_DAYS.get(scene, []))
 
     def _to_frontend(item: dict[str, Any]) -> dict[str, Any]:
+        cat = _itinerary_cat(item.get("type"))
+        transport_image_url, transport_photo_seed = _transport_image_for_action(
+            item.get("action") or item.get("title")
+        )
         return {
             "period":    _period_for_item(item),
-            "cat":       _itinerary_cat(item.get("type")),
+            "cat":       cat,
             "name":      item.get("action") or item.get("title") or "",
             "rating":    item.get("rating") or 0,
             "duration":  _duration_label(item.get("duration_minutes")),
             "price":     item.get("price_label") or "",
             "queue":     item.get("queue") or "",
             "note":      item.get("reason"),
-            "photoSeed": _photo_seed(item.get("action") or "travel"),
+            "photoSeed": transport_photo_seed if cat == "交通" else _photo_seed(item.get("action") or "travel"),
+            "imageUrl":  transport_image_url if cat == "交通" else _card_photo_url(item.get("card_id")),
             "cardId":    item.get("card_id"),
             "meal":         item.get("meal") or "",
             "selfArranged": bool(item.get("self_arranged")),
@@ -642,6 +752,7 @@ def _frontend_order_items_from_status(status: dict[str, Any]) -> list[dict[str, 
                 "cardId": order.get("card_id"),
                 "type": item_type,
                 "name": order.get("merchant_name") or payload.get("title") or "行程订单",
+                "imageUrl": _card_photo_url(order.get("card_id")),
                 "qtyText": "后端订单 × 1",
                 "amountText": "免费" if amount == 0 else f"¥{amount}",
                 "amount": amount,
@@ -714,13 +825,15 @@ def get_pois(scene: Scene = Query("sz")) -> list[dict[str, Any]]:
     resolved_scene = _scene(scene)
     state = _ensure_trip(resolved_scene)
     items = _frontend_picker_items_from_state(resolved_scene, state)
-    # Inject cached POI images where available
-    img_map = _STORE.get_poi_images_for_scene(resolved_scene)
-    if img_map:
-        for item in items:
-            url = img_map.get(item.get("id", ""))
-            if url:
-                item["imageUrl"] = url
+    # Expose each POI's image as imageUrl (the field the frontend renders).
+    # Prefer a batch-generated image from the cache; otherwise fall back to the
+    # POI's own photo (商家图片) so the bundled local images show without a
+    # separate generation pass.
+    img_map = _STORE.get_poi_images_for_scene(resolved_scene) or {}
+    for item in items:
+        url = img_map.get(item.get("id", "")) or item.get("photo")
+        if url:
+            item["imageUrl"] = url
     return items
 
 
@@ -1022,20 +1135,36 @@ def call_ride(order_id: str, request: RideRequest) -> dict[str, Any]:
     if order.get("tripId"):
         state = _ensure_routed_trip(str(order["tripId"]))
         for candidate in state.get("route_plan", {}).get("segments", []):
-            if request.to in str(candidate.get("to")) or request.from_ in str(candidate.get("from")):
+            if (
+                _same_place_name(request.from_, candidate.get("from"))
+                and _same_place_name(request.to, candidate.get("to"))
+            ):
                 segment = candidate
                 break
+        if segment is None:
+            for candidate in state.get("route_plan", {}).get("segments", []):
+                if _same_place_name(request.to, candidate.get("to")):
+                    segment = candidate
+                    break
         order["backendTrace"] = _trace_summary(state)
         _STORE.save_order(order)
-    km = float((segment or {}).get("distance_km") or (4.2 if scene == "bj" else 1.8))
+
+    if segment is None:
+        origin = _route_point_for_name(scene, request.from_)
+        destination = _route_point_for_name(scene, request.to)
+        if origin and destination:
+            segment = tools.get_route_between(origin, destination)
+
+    km = float((segment or {}).get("distance_km") or _deterministic_ride_km(scene, request.from_, request.to))
+    eta_min = int((segment or {}).get("duration_minutes") or max(6, round(km / (20 if km > 3 else 12) * 60)))
     quote = tools.get_taxi_quote(segment or {"distance_km": km})
     return {
         "from": request.from_,
         "to": request.to,
-        "km": km,
-        "etaMin": int((segment or {}).get("duration_minutes") or (12 if scene == "bj" else 7)),
+        "km": round(km, 1),
+        "etaMin": eta_min,
         "estimate": int(quote.get("estimated_price") or (42 if scene == "bj" else 28)),
-        "carType": "美团快车（mock）",
+        "carType": "美团快车",
     }
 
 

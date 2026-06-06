@@ -42,6 +42,7 @@ const TAG_MAP: Record<string, string> = {
   'sz-train':          'highspeed-train,guangzhou,shenzhen',
   'sz-flight':         'airplane,airport,sky',
   'bj-train':          'highspeed-train,railway,beijing',
+  'taxi':              'taxi,city,travel',
   // === Summary highlights / chapters ===
   'sz-chapter-1':      'shenzhen,train-station,morning',
   'sz-chapter-2':      'shenzhen,skyline,daytime',
@@ -75,7 +76,9 @@ export function Photo({
 }: Props) {
   const tag = TAG_MAP[seed] ?? seed.replace(/-/g, ',');
   const lock = LOCK_MAP[seed] ?? 1;
-  const url = src || photoUrl(tag, 480, 480, lock);
+  const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
+  const normalizedSrc = src?.startsWith('/') ? `${apiBase}${src}` : src;
+  const url = normalizedSrc || photoUrl(tag, 480, 480, lock);
 
   return (
     <div

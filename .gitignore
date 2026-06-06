@@ -19,11 +19,14 @@ frontend/.env.local
 *.sqlite
 *.sqlite3
 *.db
+*.sqlite.bak.*
 
 # ── Generated assets (poster + POI illustrations) ───────
 # Keep the directory (.gitkeep) but ignore the rendered PNG/SVG output.
 backend/static/generated/**/*.png
 backend/static/generated/**/*.svg
+!backend/static/generated/transport/highspeed_train.png
+!backend/static/generated/transport/taxi.png
 
 # ── Node / Vite (frontend) ──────────────────────────────
 node_modules/

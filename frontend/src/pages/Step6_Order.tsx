@@ -18,6 +18,7 @@ interface OrderItem {
   qty: string;
   amount: string;
   photoSeed: string;
+  imageUrl?: string;
 }
 
 const ITEMS_BY_SCENE: Record<'sz' | 'bj', OrderItem[]> = { sz: [], bj: [] };
@@ -66,6 +67,7 @@ function toOrderItem(item: Record<string, unknown>): OrderItem {
     qty: String(qty ?? ''),
     amount: typeof amount === 'number' ? `¥${amount}` : String(amount ?? '免费'),
     photoSeed: String(item.photoSeed ?? 'travel'),
+    imageUrl: item.imageUrl ? String(item.imageUrl) : undefined,
   };
 }
 
@@ -402,7 +404,7 @@ function OrderRow({
           textAlign: 'left',
         }}
       >
-        <Photo seed={item.photoSeed} width={36} height={36} radius={8} style={{ flexShrink: 0 }} />
+        <Photo seed={item.photoSeed} src={item.imageUrl} width={36} height={36} radius={8} style={{ flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>{item.name}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
