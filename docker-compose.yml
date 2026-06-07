@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist SQLite database and generated images across restarts
+      - ./backend/data:/app/backend/data
+      - ./backend/static/generated:/app/backend/static/generated
+    restart: unless-stopped
