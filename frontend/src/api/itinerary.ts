@@ -27,6 +27,12 @@ export interface DayItem {
   hotelTier?: HotelTier;
   note?: string;
   photoSeed: string;
+  /** Bundled POI image (商家图片) URL, injected by the backend per card */
+  imageUrl?: string;
+  /** Meal slot label (早餐/午餐/晚餐) when this row is a meal */
+  meal?: string;
+  /** True for a self-arranged meal placeholder (not a booked item) */
+  selfArranged?: boolean;
 }
 
 export interface Day {

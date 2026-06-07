@@ -4,6 +4,7 @@ import { MobileFrame } from '../components/MobileFrame';
 import { StatusBar } from '../components/StatusBar';
 import { GoMark } from '../components/Atoms';
 import { Photo } from '../components/Photo';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp } from '../store';
 import type { Scene } from '../types';
 import { getPreview } from '../api/itinerary';
@@ -423,7 +424,19 @@ function CoverSlide({ data, loading }: { data: SummaryData; loading: boolean }) 
   return (
     <section style={{ ...slideBaseStyle, padding: '42px 30px 24px', background: 'radial-gradient(circle at 78% 28%,#ff8fdb 0%,rgba(255,143,219,.38) 20%,transparent 39%), radial-gradient(circle at 20% 68%,#ffb05c 0%,rgba(255,176,92,.36) 22%,transparent 43%), radial-gradient(circle at 62% 72%,#7bdcff 0%,rgba(123,220,255,.28) 18%,transparent 40%), linear-gradient(150deg,#050819 0%,#241447 48%,#070713 100%)' }}>
       {loading && (
-        <div style={{ position: 'absolute', top: 18, right: 22, fontSize: 13, opacity: 0.6 }}>加载中…</div>
+        <div style={{ position: 'absolute', top: 18, left: 22, right: 22 }}>
+          <StreamingStatus
+            title="正在生成旅程总结"
+            tone="dark"
+            compact
+            messages={[
+              '读取最终行程',
+              '整理路线足迹',
+              '提炼高光地点',
+              '生成回顾章节',
+            ]}
+          />
+        </div>
       )}
       <div style={auroraLineStyle} />
       <div style={{ position: 'relative', zIndex: 1 }}>

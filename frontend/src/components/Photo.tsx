@@ -42,6 +42,7 @@ const TAG_MAP: Record<string, string> = {
   'sz-train':          'highspeed-train,guangzhou,shenzhen',
   'sz-flight':         'airplane,airport,sky',
   'bj-train':          'highspeed-train,railway,beijing',
+  'taxi':              'taxi,city,travel',
   // === Summary highlights / chapters ===
   'sz-chapter-1':      'shenzhen,train-station,morning',
   'sz-chapter-2':      'shenzhen,skyline,daytime',

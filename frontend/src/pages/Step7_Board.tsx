@@ -4,6 +4,7 @@ import { MobileFrame } from '../components/MobileFrame';
 import { StatusBar } from '../components/StatusBar';
 import { GoMark } from '../components/Atoms';
 import { Photo } from '../components/Photo';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp, type Weather } from '../store';
 import type { Scene } from '../types';
 import { getBoardState, checkInStation, getWeather, getPreview, getPickerItems, generatePoster, getMicroRecs, getOrder } from '../api';
@@ -15,9 +16,9 @@ type Drawer = null | 'menu' | 'memo' | 'share' | 'companion' | 'orders' | 'suppo
 type PanelMode = 'normal' | 'trip' | 'map';
 
 interface Todo { id: string; text: string; done: boolean }
-interface MapPin { lat: number; lng: number; icon: string; name: string; rating: number; walk: string; tint: string; photoSeed: string; desc: string }
+interface MapPin { lat: number; lng: number; icon: string; name: string; rating: number; walk: string; tint: string; photoSeed: string; imageUrl?: string; desc: string }
 interface RouteStop { lat: number; lng: number; name: string; icon: string; done?: boolean }
-interface DeliveryChoice { name: string; desc: string; price: string; seed: string; scene: Scene }
+interface DeliveryChoice { name: string; desc: string; price: string; seed: string; photo?: string; scene: Scene }
 interface BoardItem {
   period: '上午' | '中午' | '下午' | '晚上' | '出发' | '晚餐' | '返程';
   cat: '交通' | '景点' | '美食';
@@ -25,10 +26,37 @@ interface BoardItem {
   rating: number;
   duration: string;
   photoSeed: string;
+  imageUrl?: string;
   desc: string;
   queue?: '低' | '中' | '高';
   segment?: { walk: string; drive: string; meters: string };
   price?: string;
+}
+
+// Thumbnail for a board station: use backend-provided images when available,
+// else fall back to a soft emoji tile for self-arranged stops.
+const STATION_PLACEHOLDER: Record<BoardItem['cat'], { icon: string; bg: string }> = {
+  交通: { icon: '🚄', bg: 'linear-gradient(135deg,#e8f0ff,#d6e4ff)' },
+  美食: { icon: '🍽️', bg: 'linear-gradient(135deg,#fff1e6,#ffe2cc)' },
+  景点: { icon: '📍', bg: 'linear-gradient(135deg,#eef7ee,#dcefdc)' },
+};
+
+function StationThumb({ item }: { item: BoardItem }) {
+  if (item.imageUrl) {
+    return <Photo seed={item.photoSeed} src={item.imageUrl} width={74} height={74} radius={10} />;
+  }
+  const ph = STATION_PLACEHOLDER[item.cat] ?? STATION_PLACEHOLDER['景点'];
+  return (
+    <div
+      style={{
+        width: 74, height: 74, borderRadius: 10, flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 30, background: ph.bg,
+      }}
+    >
+      {ph.icon}
+    </div>
+  );
 }
 
 // OSM tile origins at zoom 12, centred on each scene's POI cluster
@@ -76,6 +104,7 @@ export default function Step7_Board() {
   const [forecastDays, setForecastDays] = useState<{ date: string; cond: string; tempH: number; tempL: number }[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [todoText, setTodoText] = useState('');
+  const [loadingTrip, setLoadingTrip] = useState(false);
 
   // Board data loaded from API
   const [boardDay1, setBoardDay1] = useState<BoardItem[]>([]);
@@ -104,11 +133,18 @@ export default function Step7_Board() {
 
   // Load itinerary + POI data from backend
   useEffect(() => {
+    let cancelled = false;
+    setLoadingTrip(true);
+    setBoardDay1([]);
+    setBoardDay2([]);
+    setBoardPins([]);
+    setBoardRouteStops([]);
     Promise.all([getPreview(scene), getPickerItems(scene)])
       .then(([preview, items]) => {
+        if (cancelled) return;
         // POI items with lat/lng (API returns them even though type doesn't declare them)
         type PoiWithCoords = { id: string; cat: string; name: string; rating: number;
-          subDesc: string; photoSeed: string; lat?: number; lng?: number };
+          subDesc: string; photoSeed: string; imageUrl?: string; lat?: number; lng?: number };
         const pois = items.filter((it) => it.cat !== 'transport') as unknown as PoiWithCoords[];
 
         // Rating lookup by name
@@ -123,6 +159,7 @@ export default function Step7_Board() {
             rating: ratingMap[it.name] || it.rating || 0,
             duration: it.duration,
             photoSeed: it.photoSeed || it.name,
+            imageUrl: it.imageUrl,
             desc: it.note ?? '',
             price: it.price || undefined,
             queue: it.queue || undefined,
@@ -145,6 +182,7 @@ export default function Step7_Board() {
             walk: '',
             tint: p.cat === 'food' ? '#fff0e0' : p.cat === 'hotel' ? '#e8f4ff' : '#e8f0ff',
             photoSeed: p.photoSeed || p.name,
+            imageUrl: p.imageUrl,
             desc: p.subDesc ?? '',
           }));
         setBoardPins(pins);
@@ -162,7 +200,13 @@ export default function Step7_Board() {
         setBoardRouteStops(stops);
         // (MapStage fits & centres the view on these stops itself.)
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoadingTrip(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [scene]);
 
   // Sync completed stations from board state
@@ -240,6 +284,7 @@ export default function Step7_Board() {
           weatherMeta={weatherMeta}
           pins={pins}
           routeStops={routeStops}
+          loading={loadingTrip}
           showNearby={showNearby}
           focusedPin={focusedPin}
           setFocusedPin={setFocusedPin}
@@ -303,6 +348,18 @@ export default function Step7_Board() {
           <div style={{ padding: '14px', maxHeight: panelMode === 'trip' ? 640 : 'none', overflowY: panelMode === 'trip' ? 'auto' : 'visible' }}>
             {tab === '总览' && (
               <TripProgress scene={scene} doneStations={doneStations} totalStations={totalStations} />
+            )}
+
+            {loadingTrip && items.length === 0 && (
+              <StreamingStatus
+                title="正在同步行中看板"
+                messages={[
+                  '读取已支付订单',
+                  '加载行程时间轴',
+                  '匹配地图坐标',
+                  '刷新路线和附近推荐',
+                ]}
+              />
             )}
 
             {items.map((it, i) => (
@@ -377,9 +434,10 @@ export default function Step7_Board() {
 
 function MapStage({
   scene, weather, weatherMeta, pins, routeStops, showNearby, focusedPin, setFocusedPin,
-  height, onOpenPlace, onOpenWeather, onOpenFortune, onOpenPoster, onExpandMap, onExpandTrip, panelMode, doneStations, totalStations,
+  height, onOpenPlace, onOpenWeather, onOpenFortune, onOpenPoster, onExpandMap, onExpandTrip, panelMode, doneStations, totalStations, loading,
 }: {
   scene: Scene; weather: Weather; weatherMeta: typeof WEATHER_META[Weather]; pins: MapPin[]; routeStops: RouteStop[];
+  loading: boolean;
   showNearby: boolean; focusedPin: string | null; setFocusedPin: (name: string) => void;
   height: number;
   onOpenPlace: (p: MapPin) => void; onOpenWeather: () => void; onOpenFortune: () => void; onOpenPoster: () => void;
@@ -511,6 +569,21 @@ function MapStage({
       <div style={{ position: 'absolute', inset: 0, background: weatherMeta.bg, pointerEvents: 'none' }} />
       <WeatherEffect weather={weather} />
 
+      {loading && routeStops.length === 0 && (
+        <div style={{ position: 'absolute', left: 14, right: 14, bottom: 18, zIndex: 6 }}>
+          <StreamingStatus
+            title="正在加载地图路线"
+            compact
+            messages={[
+              '读取行程站点',
+              '匹配 POI 坐标',
+              '铺设地图路径',
+              '准备附近提醒',
+            ]}
+          />
+        </div>
+      )}
+
       <div style={{ position: 'absolute', top: 10, left: 10, right: 10, display: 'flex', gap: 8 }}>
         <MiniCard icon={weatherMeta.icon} title={`${weatherMeta.temp} ${weatherMeta.title}`} sub={weatherMeta.outfit} onClick={onOpenWeather} />
         <MiniCard icon="🍀" title="今日运" sub="点击占卜" onClick={onOpenFortune} />
@@ -552,28 +625,174 @@ function CurrentMarker({ weatherMeta, scene, px, py }: { weatherMeta: typeof WEA
 
 function WeatherEffect({ weather }: { weather: Weather }) {
   if (weather === 'sunny') {
-    return <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(circle at 18% 12%, rgba(255,216,74,.22), transparent 26%)' }} />;
-  }
-  const drops = Array.from({ length: weather === 'rainy' ? 26 : 34 });
-  return (
-    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', background: weather === 'rainy' ? 'rgba(17,24,39,.22)' : 'rgba(255,255,255,.16)' }}>
-      {drops.map((_, i) => (
+    return (
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', background: 'linear-gradient(180deg, rgba(255,244,191,.18), rgba(255,255,255,0) 48%)' }}>
         <span
-          key={i}
           style={{
             position: 'absolute',
-            left: `${(i * 37) % 100}%`,
-            top: `${-20 + (i * 11) % 60}%`,
-            width: weather === 'rainy' ? 2 : 6,
-            height: weather === 'rainy' ? 40 : 6,
-            borderRadius: 999,
-            background: weather === 'rainy' ? 'rgba(226,242,255,.78)' : 'rgba(255,255,255,.9)',
-            animation: `${weather === 'rainy' ? 'rainDrop' : 'snowFall'} ${weather === 'rainy' ? 1.15 : 3.6}s linear infinite`,
-            animationDelay: `${i * 0.12}s`,
-            opacity: weather === 'rainy' ? 0.78 : 0.85,
+            inset: '-18% -34% auto -20%',
+            height: 260,
+            background: 'linear-gradient(118deg, rgba(255,246,194,0) 10%, rgba(255,246,194,.28) 34%, rgba(255,246,194,0) 48%), linear-gradient(118deg, rgba(255,229,132,0) 42%, rgba(255,229,132,.18) 58%, rgba(255,229,132,0) 72%)',
+            mixBlendMode: 'screen',
+            transformOrigin: '16% 0%',
+            animation: 'sunRaySweep 9.5s ease-in-out infinite',
+          }}
+        />
+        <span
+          style={{
+            position: 'absolute',
+            left: -34,
+            top: -34,
+            width: 150,
+            height: 150,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(255,232,123,.68) 0%, rgba(255,210,66,.34) 38%, rgba(255,210,66,0) 72%)',
+            filter: 'blur(.3px)',
+            animation: 'sunBreath 5.8s ease-in-out infinite',
+          }}
+        />
+        <span
+          style={{
+            position: 'absolute',
+            left: 6,
+            top: 18,
+            width: 250,
+            height: 110,
+            borderRadius: '50%',
+            background: 'radial-gradient(ellipse, rgba(255,247,210,.36), rgba(255,247,210,0) 66%)',
+            mixBlendMode: 'screen',
+            animation: 'warmLightDrift 8s ease-in-out infinite',
+          }}
+        />
+        <span
+          style={{
+            position: 'absolute',
+            left: '9%',
+            right: '16%',
+            bottom: 22,
+            height: 76,
+            borderRadius: '50%',
+            background: 'radial-gradient(ellipse at 42% 50%, rgba(255,229,132,.24), rgba(255,229,132,.08) 44%, rgba(255,229,132,0) 72%)',
+            filter: 'blur(7px)',
+            mixBlendMode: 'screen',
+            animation: 'sunPatchGlow 7.2s ease-in-out infinite',
+          }}
+        />
+      </div>
+    );
+  }
+  const particles = Array.from({ length: weather === 'rainy' ? 44 : 42 });
+  const groundMarks = Array.from({ length: weather === 'rainy' ? 4 : 5 });
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', background: weather === 'rainy' ? 'linear-gradient(180deg, rgba(15,23,42,.28), rgba(30,41,59,.12) 42%, rgba(15,23,42,.22))' : 'linear-gradient(180deg, rgba(255,255,255,.34), rgba(239,246,255,.18) 42%, rgba(255,255,255,.26))' }}>
+      <span
+        style={{
+          position: 'absolute',
+          inset: weather === 'rainy' ? '0 -16% auto -16%' : '-8% -18% auto -18%',
+          height: weather === 'rainy' ? 150 : 190,
+          background: weather === 'rainy'
+            ? 'radial-gradient(ellipse at 48% 20%, rgba(203,213,225,.26), rgba(203,213,225,0) 64%)'
+            : 'radial-gradient(ellipse at 45% 18%, rgba(255,255,255,.72), rgba(255,255,255,0) 68%)',
+          filter: 'blur(8px)',
+          animation: 'weatherHazeDrift 10s ease-in-out infinite',
+        }}
+      />
+      {weather === 'rainy' && (
+        <span
+          style={{
+            position: 'absolute',
+            left: -80,
+            right: -80,
+            bottom: -24,
+            height: 150,
+            background: 'linear-gradient(180deg, rgba(148,163,184,0), rgba(148,163,184,.18) 58%, rgba(15,23,42,.18))',
+            filter: 'blur(10px)',
+            animation: 'rainMistPulse 6.5s ease-in-out infinite',
+          }}
+        />
+      )}
+      <span
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: weather === 'rainy' ? 98 : 112,
+          background: weather === 'rainy'
+            ? 'linear-gradient(180deg, rgba(15,23,42,0), rgba(59,130,246,.09) 44%, rgba(15,23,42,.15)), radial-gradient(ellipse at 50% 100%, rgba(191,219,254,.24), rgba(191,219,254,0) 70%)'
+            : 'linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,.48) 42%, rgba(239,246,255,.76)), radial-gradient(ellipse at 50% 100%, rgba(255,255,255,.9), rgba(255,255,255,0) 72%)',
+          filter: weather === 'rainy' ? 'blur(3px)' : 'blur(1px)',
+        }}
+      />
+      {groundMarks.map((_, i) => {
+        const isRain = weather === 'rainy';
+        return (
+          <span
+            key={`ground-${i}`}
+            style={{
+              position: 'absolute',
+              left: `${isRain ? 6 + i * 23 : -10 + i * 25}%`,
+              bottom: isRain ? 14 + (i % 2) * 17 : -6 + (i % 3) * 8,
+              width: isRain ? 88 + (i % 2) * 28 : 118 + (i % 3) * 18,
+              height: isRain ? 24 + (i % 3) * 5 : 36 + (i % 2) * 10,
+              borderRadius: '50%',
+              background: isRain
+                ? 'radial-gradient(ellipse, rgba(219,234,254,.32), rgba(96,165,250,.16) 45%, rgba(15,23,42,0) 72%)'
+                : 'radial-gradient(ellipse, rgba(255,255,255,.92), rgba(226,242,255,.54) 52%, rgba(226,242,255,0) 76%)',
+              boxShadow: isRain ? 'inset 0 1px 10px rgba(255,255,255,.16)' : '0 -5px 14px rgba(255,255,255,.42)',
+              filter: `blur(${isRain ? 1.8 : 2.4}px)`,
+              opacity: isRain ? 0.72 : 0.78,
+              animation: `${isRain ? 'puddleShimmer' : 'snowDriftSettle'} ${isRain ? 4.8 + i * 0.4 : 8.5 + i * 0.6}s ease-in-out infinite`,
+              animationDelay: `${-i * 0.7}s`,
+            }}
+          />
+        );
+      })}
+      {weather === 'rainy' && groundMarks.map((_, i) => (
+        <span
+          key={`ripple-${i}`}
+          style={{
+            position: 'absolute',
+            left: `${12 + i * 22}%`,
+            bottom: 24 + (i % 2) * 24,
+            width: 22 + (i % 2) * 8,
+            height: 8 + (i % 2) * 3,
+            borderRadius: '50%',
+            border: '1px solid rgba(219,234,254,.42)',
+            opacity: 0,
+            animation: `puddleRipple ${2.6 + i * 0.25}s ease-out infinite`,
+            animationDelay: `${-i * 0.5}s`,
           }}
         />
       ))}
+      {particles.map((_, i) => {
+        const isRain = weather === 'rainy';
+        const left = ((i * 29 + (i % 5) * 13) % 110) - 6;
+        const duration = isRain ? 0.9 + (i % 5) * 0.15 : 5.6 + (i % 7) * 0.52;
+        const size = isRain ? 1.2 + (i % 3) * 0.55 : 3.4 + (i % 5) * 1.15;
+        const opacity = isRain ? 0.45 + (i % 4) * 0.11 : 0.5 + (i % 5) * 0.08;
+        return (
+          <span
+            key={i}
+            style={{
+              position: 'absolute',
+              left: `${left}%`,
+              top: isRain ? '-22%' : '-16%',
+              width: isRain ? size : size,
+              height: isRain ? 42 + (i % 4) * 12 : size,
+              borderRadius: 999,
+              background: isRain
+                ? 'linear-gradient(180deg, rgba(255,255,255,0), rgba(219,234,254,.82), rgba(147,197,253,.46))'
+                : 'radial-gradient(circle, rgba(255,255,255,.96), rgba(226,242,255,.72) 62%, rgba(226,242,255,0))',
+              boxShadow: isRain ? '0 0 10px rgba(147,197,253,.26)' : '0 0 12px rgba(255,255,255,.74)',
+              filter: isRain ? 'blur(.15px)' : `blur(${(i % 3) * 0.25}px)`,
+              opacity,
+              animation: `${isRain ? 'rainDrop' : 'snowFall'} ${duration}s ${isRain ? 'linear' : 'cubic-bezier(.45,0,.55,1)'} infinite`,
+              animationDelay: `${-(i * (isRain ? 0.11 : 0.27))}s`,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -716,7 +935,7 @@ function BoardItemBlock({
         </button>
         <button onClick={onDetail} className="card" style={{ flex: 1, minWidth: 0, padding: 12, borderLeft: `4px solid ${left}`, borderRadius: '4px 12px 12px 4px', textAlign: 'left' }}>
           <div style={{ display: 'flex', gap: 12 }}>
-            <Photo seed={item.photoSeed} width={74} height={74} radius={10} />
+            <StationThumb item={item} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="h-between">
                 <span style={{ fontSize: 14.5, fontWeight: 800, flex: 1 }}>{item.name}</span>
@@ -1127,13 +1346,17 @@ function PosterSheet({ scene }: { scene: Scene }) {
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.72))' }} />
             <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18 }}>
               {loading ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,216,74,.6)', borderTopColor: '#FFD100', animation: 'spin .8s linear infinite' }} />
-                  <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.9, textAlign: 'center' }}>
-                    AI 正在作画…<br />
-                    <span style={{ fontSize: 11, opacity: 0.7 }}>约需 30–60 秒，请稍等</span>
-                  </div>
-                </div>
+                <StreamingStatus
+                  title="正在生成旅行海报"
+                  tone="dark"
+                  compact
+                  messages={[
+                    '整理行程亮点',
+                    '生成海报画面',
+                    '写入分享文案',
+                    '保存图片结果',
+                  ]}
+                />
               ) : (
                 <>
                   <div style={{ fontSize: 22, fontWeight: 900 }}>{scene === 'bj' ? '北京家庭文化游' : '深圳周末游'}</div>
@@ -1233,13 +1456,24 @@ function TeaSheet({ scene, onDelivery }: { scene: Scene; onDelivery: (choice: De
           暂无推荐，请稍后再试
         </div>
       )}
+      {items.length === 0 && loading && (
+        <StreamingStatus
+          title="正在寻找附近推荐"
+          messages={[
+            '读取当前位置附近候选',
+            '过滤饮品和小吃类型',
+            '按距离和评分排序',
+            '同步推荐卡片',
+          ]}
+        />
+      )}
       {items.map((item) => {
         const open = expanded === item.id;
         const priceText = item.price ? `¥${item.price}/人` : '';
         const recs = item.recommended?.join(' / ') || item.desc;
         return (
           <div key={item.id} className="card" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
-            <Photo seed={item.name} width={72} height={72} radius={10} />
+            <Photo seed={item.name} src={item.photo} width={72} height={72} radius={10} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 14, fontWeight: 900 }}>{item.name}</span>
@@ -1259,7 +1493,7 @@ function TeaSheet({ scene, onDelivery }: { scene: Scene; onDelivery: (choice: De
             </div>
             {item.mode === '外卖' ? (
               <button
-                onClick={() => onDelivery({ name: item.name, desc: item.desc, price: priceText, seed: item.name, scene })}
+                onClick={() => onDelivery({ name: item.name, desc: item.desc, price: priceText, seed: item.name, photo: item.photo, scene })}
                 className="btn-go"
                 style={{ width: 58, height: 30, fontSize: 12, flexShrink: 0, marginTop: 4 }}
               >
@@ -1289,7 +1523,7 @@ function DeliverySheet({ choice }: { choice: DeliveryChoice | null }) {
     <>
       <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 12 }}>外卖下单</div>
       <div style={{ borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-1)', marginBottom: 12 }}>
-        <Photo seed={choice.seed} height={150} radius={0} />
+        <Photo seed={choice.seed} src={choice.photo} height={150} radius={0} />
         <div style={{ padding: 14, background: '#fff' }}>
           <div style={{ fontSize: 18, fontWeight: 900 }}>{choice.name}</div>
           <div className="text-small text-muted" style={{ marginTop: 6, lineHeight: 1.55 }}>{choice.desc}</div>
@@ -1350,9 +1584,10 @@ function PlaceSheet({ place, onTaxi }: { place: BoardItem | MapPin | null; onTax
   if (!place) return null;
   const seed = 'photoSeed' in place ? place.photoSeed : 'victoria-harbour';
   const desc = 'desc' in place ? place.desc : '';
+  const img = 'imageUrl' in place ? place.imageUrl : undefined;
   return (
     <>
-      <Photo seed={seed} height={180} radius={16} style={{ marginBottom: 12 }} />
+      <Photo seed={seed} src={img || undefined} height={180} radius={16} style={{ marginBottom: 12 }} />
       <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>{place.name}</div>
       <div style={{ color: 'var(--mt-orange)', fontWeight: 900, marginBottom: 8 }}>★ {place.rating}</div>
       <div className="text-small text-muted" style={{ lineHeight: 1.7, marginBottom: 14 }}>{desc}</div>
@@ -1529,7 +1764,17 @@ function OrdersSheet({ scene }: { scene: Scene }) {
       {!orderId && (
         <div className="text-small text-muted" style={{ marginBottom: 14, lineHeight: 1.6 }}>尚未创建订单。请先完成选址确认步骤。</div>
       )}
-      {loading && <div className="text-small text-muted" style={{ padding: '12px 0' }}>加载中…</div>}
+      {loading && (
+        <StreamingStatus
+          title="正在同步订单凭证"
+          messages={[
+            '读取订单号',
+            '同步支付状态',
+            '加载凭证列表',
+            '刷新订单金额',
+          ]}
+        />
+      )}
       {order && (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', marginBottom: 10, borderBottom: '1px solid var(--mt-line-2)' }}>

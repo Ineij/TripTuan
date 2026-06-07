@@ -82,6 +82,40 @@ class FrontendAdapterTest(unittest.TestCase):
         self.assertEqual(recs.status_code, 200)
         self.assertTrue(all(item["type"] == "美食" for item in recs.json()))
 
+    def test_order_draft_reuses_cached_itinerary_for_same_picks(self) -> None:
+        pois = self.client.get("/api/pois?scene=sz").json()
+        picks = [item["id"] for item in pois if item.get("cat") != "transport"][:4]
+
+        rerank = self.client.post(
+            "/api/itinerary/rerank",
+            json={"scene": "sz", "identity": {"partySize": 2}, "picks": picks},
+        )
+        self.assertEqual(rerank.status_code, 200)
+
+        from backend.api import frontend_routes
+
+        orchestrator = frontend_routes._orchestrator()
+        original_run = orchestrator.itinerary_agent.run
+
+        def fail_if_replanned(*args, **kwargs):
+            raise AssertionError("orders/draft should reuse the cached itinerary")
+
+        try:
+            orchestrator.itinerary_agent.run = fail_if_replanned
+            draft = self.client.post(
+                "/api/orders/draft",
+                json={
+                    "scene": "sz",
+                    "picks": picks,
+                    "travelers": [{"name": "Jenny", "idNo": "440***********0023"}],
+                },
+            )
+        finally:
+            orchestrator.itinerary_agent.run = original_run
+
+        self.assertEqual(draft.status_code, 200)
+        self.assertGreaterEqual(len(draft.json()["items"]), 1)
+
     def test_stream_chat_contract(self) -> None:
         response = self.client.post("/api/chat/stream", json={"scene": "bj", "query": "北京两日游"})
         self.assertEqual(response.status_code, 200)

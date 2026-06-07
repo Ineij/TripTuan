@@ -5,8 +5,9 @@ import { StatusBar } from '../components/StatusBar';
 import { NavBar } from '../components/NavBar';
 import { GoMark } from '../components/Atoms';
 import { Photo } from '../components/Photo';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp } from '../store';
-import { rerank } from '../api';
+import { rerank, getPickerItems, type Item } from '../api';
 
 type Period = '出发' | '上午' | '中午' | '下午' | '晚餐' | '晚上' | '返程';
 type Cat = '交通' | '景点' | '美食' | '酒店';
@@ -21,8 +22,11 @@ interface RankItem {
   price?: string;
   badge?: string;
   photoSeed: string;
+  imageUrl?: string;
   // transport-specific extra line
   trainNo?: string;
+  // self-arranged meal placeholder (not a booked item)
+  selfArranged?: boolean;
 }
 
 interface Day {
@@ -57,6 +61,7 @@ function RerankResult() {
   const [regenerating, setRegenerating] = useState(false);
   const [variantId, setVariantId] = useState<string | undefined>();
   const [days, setDays] = useState<Day[]>(() => DAYS_BY_SCENE[scene]);
+  const [pickerItems, setPickerItems] = useState<Item[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,9 +83,33 @@ function RerankResult() {
     };
   }, [scene]);
 
-  const totalCount = days.reduce((a, d) => a + d.items.length, 0);
-  const foodCount  = days.flatMap((d) => d.items).filter((i) => i.cat === '美食').length;
-  const sightCount = days.flatMap((d) => d.items).filter((i) => i.cat === '景点').length;
+  // Load picker items so the summary mirrors the user's actual Step3 picks
+  // (same source of truth as Step2/Step3: getPickerItems + selectedPOIs).
+  useEffect(() => {
+    let cancelled = false;
+    getPickerItems(scene)
+      .then((items) => {
+        if (!cancelled) setPickerItems(items);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [scene]);
+
+  // Counts reflect what the user picked on Step2/Step3; fall back to the
+  // reranked timeline only if the selection/items aren't available yet.
+  const selectedItems = pickerItems.filter((i) => selectedPOIs.has(i.id));
+  const hasSelection = selectedItems.length > 0;
+  const totalCount = hasSelection
+    ? selectedItems.length
+    : days.reduce((a, d) => a + d.items.length, 0);
+  const foodCount = hasSelection
+    ? selectedItems.filter((i) => i.cat === 'food').length
+    : days.flatMap((d) => d.items).filter((i) => i.cat === '美食').length;
+  const sightCount = hasSelection
+    ? selectedItems.filter((i) => i.cat === 'sight').length
+    : days.flatMap((d) => d.items).filter((i) => i.cat === '景点').length;
   const regenerate = () => {
     setRegenerating(true);
     rerank(scene, identity, Array.from(selectedPOIs), variantId)
@@ -137,15 +166,25 @@ function RerankResult() {
             <Pill>{totalCount} 个点位</Pill>
             <Pill>餐饮 {foodCount}</Pill>
             <Pill>景点 {sightCount}</Pill>
-            <Pill>1 人</Pill>
+            <Pill>{identity.partySize} 人</Pill>
           </div>
         </div>
 
         {/* Timeline */}
         {regenerating && (
-          <div className="card fade-up" style={{ marginBottom: 12, background: '#fffbeb', border: '1px solid #facc15', fontSize: 13, fontWeight: 800 }}>
-            🔄 正在按你已勾选的项目重新排序，生成方案 {variant === 0 ? 'B' : 'A'}...
-          </div>
+          <StreamingStatus
+            title={`正在生成方案 ${variant === 0 ? 'B' : 'A'}`}
+            messages={[
+              '读取你已勾选的项目',
+              '计算景点之间的顺路关系',
+              '把午餐和晚餐插入合适位置',
+              '同步最新行程时间轴',
+            ]}
+          />
+        )}
+
+        {days.length === 0 && regenerating && (
+          <div className="card shimmer" style={{ height: 180, marginBottom: 12 }} />
         )}
 
         {days.map((d, di) => (
@@ -231,6 +270,8 @@ function toRankDays(days: any[]): Day[] {
       price: item.price ? String(item.price) : undefined,
       badge: item.hotelTier ? String(item.hotelTier) : item.queue ? `排队${item.queue}` : undefined,
       photoSeed: String(item.photoSeed ?? 'travel'),
+      imageUrl: item.imageUrl ? String(item.imageUrl) : undefined,
+      selfArranged: Boolean(item.selfArranged),
     })),
   }));
 }
@@ -298,6 +339,7 @@ function Timeline({ items, continueFromPrev }: { items: RankItem[]; continueFrom
 }
 
 function RankCard({ item }: { item: RankItem }) {
+  if (item.selfArranged) return <SelfArrangedCard item={item} />;
   const cc = catChipBg[item.cat];
   const borderColor = catColor[item.cat];
   return (
@@ -310,13 +352,15 @@ function RankCard({ item }: { item: RankItem }) {
       }}
     >
       <div style={{ display: 'flex', gap: 10 }}>
-        <Photo seed={item.photoSeed} width={64} height={64} radius={10} style={{ flexShrink: 0 }} />
+        <Photo seed={item.photoSeed} src={item.imageUrl} width={64} height={64} radius={10} style={{ flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="h-between">
             <span style={{ fontSize: 14, fontWeight: 700, flex: 1 }}>{item.name}</span>
-            <span style={{ fontSize: 12.5, color: 'var(--mt-orange)', fontWeight: 800, marginLeft: 6 }}>
-              ★ {item.rating}
-            </span>
+            {item.rating > 0 && (
+              <span style={{ fontSize: 12.5, color: 'var(--mt-orange)', fontWeight: 800, marginLeft: 6 }}>
+                ★ {item.rating}
+              </span>
+            )}
           </div>
           <div className="text-tiny text-muted" style={{ marginTop: 4 }}>{item.sub}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
@@ -355,6 +399,38 @@ function RankCard({ item }: { item: RankItem }) {
   );
 }
 
+/** A meal slot the user hasn't booked — shown so each day still reads as a full
+ *  早/午/晚, but visually distinct (dashed, no rating/price) and tappable to add. */
+function SelfArrangedCard({ item }: { item: RankItem }) {
+  const nav = useNavigate();
+  return (
+    <button
+      onClick={() => nav('/p3')}
+      style={{
+        width: '100%', textAlign: 'left',
+        padding: 10, display: 'flex', alignItems: 'center', gap: 10,
+        border: '1px dashed var(--mt-line)', background: '#fafbfc',
+        borderRadius: 10,
+      }}
+    >
+      <div
+        style={{
+          width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: '#fff1e6', fontSize: 18,
+        }}
+      >
+        🍽️
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--mt-text-2)' }}>{item.name}</div>
+        <div className="text-tiny text-muted" style={{ marginTop: 2 }}>{item.sub}</div>
+      </div>
+      <span style={{ fontSize: 12, color: 'var(--mt-orange)', fontWeight: 700, flexShrink: 0 }}>去加购 ›</span>
+    </button>
+  );
+}
+
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span
@@ -373,7 +449,6 @@ function Pill({ children }: { children: React.ReactNode }) {
 function WaitingPage({ onDone }: { onDone: () => void }) {
   const nav = useNavigate();
   const { selectedPOIs, identity } = useApp();
-  const [step, setStep] = useState(0); // 0..5 — 5 means all done → trigger onDone
 
   const steps = [
     '正在读取你的同行人和偏好',
@@ -384,12 +459,8 @@ function WaitingPage({ onDone }: { onDone: () => void }) {
   ];
 
   useEffect(() => {
-    const tos: number[] = [];
-    [600, 1300, 2100, 2900, 3500].forEach((d, i) => {
-      tos.push(window.setTimeout(() => setStep(i + 1), d));
-    });
-    tos.push(window.setTimeout(onDone, 4100));
-    return () => tos.forEach(window.clearTimeout);
+    const timer = window.setTimeout(onDone, 4100);
+    return () => window.clearTimeout(timer);
   }, [onDone]);
 
   return (
@@ -438,46 +509,12 @@ function WaitingPage({ onDone }: { onDone: () => void }) {
         </div>
 
         {/* 5-step progress list */}
-        <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {steps.map((s, i) => {
-            const isDone = i < step;
-            const isActive = i === step;
-            const bg = isDone ? 'var(--mt-green-soft)' : isActive ? '#fffbeb' : '#fff';
-            const border = isActive ? '2px solid var(--mt-yellow-dark)' : '2px solid transparent';
-            const textColor = isDone ? 'var(--mt-text)' : isActive ? 'var(--mt-text)' : 'var(--mt-text-4)';
-            const iconBg = isDone ? 'var(--mt-green)' : isActive ? 'var(--mt-yellow)' : '#e8e9ec';
+        <StreamingStatus
+          title="行程重排进行中"
+          messages={steps}
+          style={{ marginTop: 28 }}
+        />
 
-            return (
-              <div
-                key={s}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '14px 16px', borderRadius: 12,
-                  background: bg, border,
-                  transition: 'all .25s',
-                  boxShadow: isActive ? '0 4px 14px rgba(245,184,0,.18)' : 'none',
-                }}
-              >
-                <span
-                  style={{
-                    width: 28, height: 28, borderRadius: '50%',
-                    background: iconBg, color: '#fff',
-                    fontSize: 14, fontWeight: 800,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  {isDone ? '✓' : isActive
-                    ? <span style={{ animation: 'spin .9s linear infinite', display: 'inline-block' }}>⟳</span>
-                    : i === 4 ? <span style={{ color: '#9aa5b1' }}>✨</span> : <span style={{ color: '#9aa5b1' }}>⟳</span>}
-                </span>
-                <span style={{ flex: 1, fontSize: 14, fontWeight: isActive ? 700 : 500, color: textColor }}>
-                  {s}
-                </span>
-              </div>
-            );
-          })}
-        </div>
       </div>
     </MobileFrame>
   );

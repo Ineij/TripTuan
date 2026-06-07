@@ -5,8 +5,9 @@ import { StatusBar } from '../components/StatusBar';
 import { NavBar } from '../components/NavBar';
 import { GoMark } from '../components/Atoms';
 import { Photo } from '../components/Photo';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp } from '../store';
-import { getOrderDraft, patchOrder, payOrder } from '../api';
+import { getOrderDraft, patchOrder, payOrder, getPickerItems, type Item as PickerItem } from '../api';
 
 type ItemType = '交通' | '景点' | '美食' | '酒店';
 
@@ -17,6 +18,7 @@ interface OrderItem {
   qty: string;
   amount: string;
   photoSeed: string;
+  imageUrl?: string;
 }
 
 const ITEMS_BY_SCENE: Record<'sz' | 'bj', OrderItem[]> = { sz: [], bj: [] };
@@ -65,6 +67,7 @@ function toOrderItem(item: Record<string, unknown>): OrderItem {
     qty: String(qty ?? ''),
     amount: typeof amount === 'number' ? `¥${amount}` : String(amount ?? '免费'),
     photoSeed: String(item.photoSeed ?? 'travel'),
+    imageUrl: item.imageUrl ? String(item.imageUrl) : undefined,
   };
 }
 
@@ -81,8 +84,10 @@ export default function Step6_Order() {
   const { scene, identity, selectedPOIs, setPaid, setOrderId: setStoreOrderId } = useApp();
   const [paying, setPaying] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [loadingDraft, setLoadingDraft] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [items, setItems] = useState<OrderItem[]>(() => ITEMS_BY_SCENE[scene]);
+  const [pickerItems, setPickerItems] = useState<PickerItem[]>([]);
   const [travelers, setTravelers] = useState<{ name: string; idNo: string }[]>(() =>
     buildTravelers(identity.partySize),
   );
@@ -93,16 +98,29 @@ export default function Step6_Order() {
     const m = it.amount.match(/¥(\d+)/);
     return acc + (m ? +m[1] : 0);
   }, 0);
-  const sightCount = items.filter((i) => i.type === '景点').length;
-  const foodCount  = items.filter((i) => i.type === '美食').length;
-  const hotelCount = items.filter((i) => i.type === '酒店').length;
+  // Summary pills mirror the user's Step3 picks (same source as Step4/Step5:
+  // getPickerItems + selectedPOIs); fall back to the order draft items only
+  // if the selection/items aren't available yet.
+  const selectedPicks = pickerItems.filter((i) => selectedPOIs.has(i.id));
+  const hasSelection = selectedPicks.length > 0;
+  const sightCount = hasSelection
+    ? selectedPicks.filter((i) => i.cat === 'sight').length
+    : items.filter((i) => i.type === '景点').length;
+  const foodCount = hasSelection
+    ? selectedPicks.filter((i) => i.cat === 'food').length
+    : items.filter((i) => i.type === '美食').length;
+  const hotelCount = hasSelection
+    ? selectedPicks.filter((i) => i.cat === 'hotel').length
+    : items.filter((i) => i.type === '酒店').length;
   const totalStr = '¥' + total;
+  const displayTotalStr = loadingDraft && items.length === 0 ? '计算中' : totalStr;
 
   useEffect(() => {
     let cancelled = false;
     setItems(ITEMS_BY_SCENE[scene]);
     setOrderId(null);
     setEditingId(null);
+    setLoadingDraft(true);
     getOrderDraft({
       scene,
       picks: Array.from(selectedPOIs),
@@ -115,11 +133,23 @@ export default function Step6_Order() {
         setStoreOrderId(draft.orderId);
         setItems(draft.items.map(toOrderItem));
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoadingDraft(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [scene, picksKey]);
+
+  // Load picker items so the summary pills can mirror the actual Step3 picks.
+  useEffect(() => {
+    let cancelled = false;
+    getPickerItems(scene)
+      .then((its) => { if (!cancelled) setPickerItems(its); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [scene]);
 
   const handlePay = async () => {
     setPaying(true);
@@ -279,18 +309,32 @@ export default function Step6_Order() {
           <span className="text-tiny text-muted">点每项编辑</span>
         </div>
         <div className="card" style={{ padding: 0, marginBottom: 14 }}>
-          {items.map((it, i) => (
-            <OrderRow
-              key={it.id}
-              item={it}
-              last={i === items.length - 1}
-              editing={editingId === it.id}
-              onEdit={() => setEditingId(editingId === it.id ? null : it.id)}
-              onDelete={() => setItems((prev) => prev.filter((x) => x.id !== it.id))}
-              onChangePackage={(label, amount) => setItems((prev) => prev.map((x) => x.id === it.id ? { ...x, qty: label, amount } : x))}
-              onChangeHotel={(name, qty, amount, seed) => setItems((prev) => prev.map((x) => x.id === it.id ? { ...x, name, qty, amount, photoSeed: seed } : x))}
+          {loadingDraft && items.length === 0 ? (
+            <StreamingStatus
+              title="正在生成订单草稿"
+              compact
+              style={{ margin: 12 }}
+              messages={[
+                '读取最终行程 POI',
+                '生成可下单明细',
+                '同步出行人和联系电话',
+                '计算订单合计',
+              ]}
             />
-          ))}
+          ) : (
+            items.map((it, i) => (
+              <OrderRow
+                key={it.id}
+                item={it}
+                last={i === items.length - 1}
+                editing={editingId === it.id}
+                onEdit={() => setEditingId(editingId === it.id ? null : it.id)}
+                onDelete={() => setItems((prev) => prev.filter((x) => x.id !== it.id))}
+                onChangePackage={(label, amount) => setItems((prev) => prev.map((x) => x.id === it.id ? { ...x, qty: label, amount } : x))}
+                onChangeHotel={(name, qty, amount, seed) => setItems((prev) => prev.map((x) => x.id === it.id ? { ...x, name, qty, amount, photoSeed: seed } : x))}
+              />
+            ))
+          )}
           <div
             style={{
               padding: '12px 14px',
@@ -301,7 +345,7 @@ export default function Step6_Order() {
             <span className="text-small" style={{ color: 'var(--mt-text-2)' }}>
               合计（{identity.partySize} 人）
             </span>
-            <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--mt-orange)' }}>{totalStr}</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--mt-orange)' }}>{displayTotalStr}</span>
           </div>
         </div>
 
@@ -322,15 +366,15 @@ export default function Step6_Order() {
       <div className="footer-bar" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flexShrink: 0 }}>
           <div className="text-tiny text-muted">合计</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--mt-orange)' }}>{totalStr}</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--mt-orange)' }}>{displayTotalStr}</div>
         </div>
         <button
           className="btn-primary"
           style={{ flex: 1, marginLeft: 4 }}
-          disabled={paying}
+          disabled={loadingDraft || paying || items.length === 0}
           onClick={handlePay}
         >
-          {paying ? '支付中…' : `提交订单 · 支付 ${totalStr}`}
+          {loadingDraft ? '订单生成中…' : paying ? '支付中…' : `提交订单 · 支付 ${totalStr}`}
         </button>
       </div>
     </MobileFrame>
@@ -360,7 +404,7 @@ function OrderRow({
           textAlign: 'left',
         }}
       >
-        <Photo seed={item.photoSeed} width={36} height={36} radius={8} style={{ flexShrink: 0 }} />
+        <Photo seed={item.photoSeed} src={item.imageUrl} width={36} height={36} radius={8} style={{ flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>{item.name}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>

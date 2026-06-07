@@ -5,6 +5,7 @@ import { StatusBar } from '../components/StatusBar';
 import { NavBar } from '../components/NavBar';
 import { GoMark } from '../components/Atoms';
 import { Photo } from '../components/Photo';
+import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp } from '../store';
 import type { Identity } from '../types';
 import { getPickerItems } from '../api';
@@ -205,6 +206,18 @@ export default function Step3_Picker() {
             {loadingItems ? '，正在同步最新数据' : '，可自由调整'}
           </div>
         </div>
+
+        {loadingItems && (
+          <StreamingStatus
+            title="正在同步可选项目"
+            messages={[
+              '读取交通和目的地信息',
+              '加载大众点评 POI 候选',
+              '按你的偏好预勾选项目',
+              '刷新景点、美食和酒店卡片',
+            ]}
+          />
+        )}
 
         {/* Tab filters */}
         <div
