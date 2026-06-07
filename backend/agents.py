@@ -1394,11 +1394,11 @@ class PosterAgent:
         preference = (state.structured_request.get("preferences") or ["轻松"])[0]
 
         fallback_poster = {
-            "title": f"今天点亮了 {checked_count or total} 个{destination}角落",
-            "subtitle": f"一条适合{preference}出行的路线",
-            "share_text": "我们把日常推开一条缝，让城市的光从路线里照进来。每一次抵达，都是对生活重新说是。",
-            "poster_style": "retro_meituan_travel_summary",
-            "layout": "netease_yearly_summary_route_poster",
+            "title": "出发",
+            "subtitle": f"{preference}型城市漫游者 · 点亮了 {checked_count or total} 个{destination}行程点",
+            "share_text": "今天不是逃离日常，是把日常重新变好看。下一次出发，不一定要很远，只要很像自己。",
+            "poster_style": "xiaohongshu_yearly_report_gradient",
+            "layout": "season_color_card_or_ranking_report",
         }
         poster = self._create_poster_with_ai(state, fallback_poster)
         state.poster = {**poster, **generate_trip_poster_png(state, poster)}

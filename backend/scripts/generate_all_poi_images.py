@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Batch-generate flat editorial city-illustration images for scenic POIs.
+"""Batch-generate unified lifestyle-photo images for POIs.
 
 Covers:
-  - every scenic POI in both scenes (DianpingDB: bj + sz) -> poi_<card_id>.png
+  - every attraction / food / hotel POI in both scenes -> poi_<card_id>.png
   - existing shared transport images are preserved but not regenerated.
 
 Idempotent / resumable: a POI whose PNG already exists is skipped (its DB row is
@@ -55,7 +55,7 @@ BACKOFF_START = 20.0
 BACKOFF_MAX = 180.0
 MAX_RETRIES = 5           # per-item retries on throttle
 WALL_FAILURES = 12        # consecutive fully-failed items -> exit to resume later
-SCENIC_TYPES = {"景点", "拍照点", "休息点"}
+GENERATED_POI_TYPES = {"景点", "拍照点", "休息点", "美食", "酒店"}
 
 _MODE_SLUG = {"高铁": "rail", "动车": "rail", "飞机": "air", "大巴": "bus"}
 
@@ -142,18 +142,18 @@ def main(dry_run: bool = False) -> int:
         (scene, poi)
         for scene in ("bj", "sz")
         for poi in db.all(scene)
-        if poi.get("type") in SCENIC_TYPES
+        if poi.get("type") in GENERATED_POI_TYPES
     ]
     total = len(work)
     t_jobs = _transport_jobs()
     scene_counts = {
-        scene: sum(1 for poi in db.all(scene) if poi.get("type") in SCENIC_TYPES)
+        scene: sum(1 for poi in db.all(scene) if poi.get("type") in GENERATED_POI_TYPES)
         for scene in ("bj", "sz")
     }
 
     _log(f"DB={DB_PATH}")
     _log(f"model={settings.model} provider={settings.provider} size=1024*1024 enabled={settings.enabled}")
-    _log(f"scenic POI library: {total} POIs (bj={scene_counts['bj']} sz={scene_counts['sz']})")
+    _log(f"POI image library: {total} POIs (bj={scene_counts['bj']} sz={scene_counts['sz']})")
     _log(f"transport modes preserved if already present: {[(m, len(items)) for m, _, items in t_jobs]}")
     existing = sum(1 for _, poi in work if (POI_IMAGES_DIR / f"poi_{poi['card_id']}.png").exists())
     _log(f"already-generated POI pngs: {existing}/{total} (these are skipped)")
@@ -208,6 +208,7 @@ def main(dry_run: bool = False) -> int:
             "category_3": poi.get("category_3", ""),
             "type": poi.get("type", ""),
             "tags": poi.get("tags") or [],
+            "photo_url": poi.get("photo_url", ""),
         }
         attempt = 0
         while True:

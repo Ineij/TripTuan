@@ -77,8 +77,8 @@ export function Photo({
   const tag = TAG_MAP[seed] ?? seed.replace(/-/g, ',');
   const lock = LOCK_MAP[seed] ?? 1;
   const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
-  const normalizedSrc = src?.startsWith('/') ? `${apiBase}${src}` : src;
-  const url = normalizedSrc || photoUrl(tag, 480, 480, lock);
+  const resolvedSrc = src?.startsWith('/static/') && apiBase ? `${apiBase}${src}` : src;
+  const url = resolvedSrc || photoUrl(tag, 480, 480, lock);
 
   return (
     <div

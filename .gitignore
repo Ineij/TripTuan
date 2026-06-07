@@ -9,6 +9,7 @@ __pycache__/
 
 # ── Secrets (never commit real keys) ────────────────────
 .env
+.env.local
 frontend/.env.local
 
 # Local Claude Code config — settings.local.json captures command history
