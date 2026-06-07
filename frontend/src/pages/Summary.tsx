@@ -574,8 +574,8 @@ function PlacesSlide({ data }: { data: SummaryData }) {
   return (
     <section style={{ ...slideBaseStyle, padding: '24px 26px 22px', background: theme.background, color: '#080808' }}>
       <div style={annualMemoryWashStyle} />
-      <div style={{ position: 'absolute', left: -54, bottom: 92, fontSize: 116, fontWeight: 950, color: 'rgba(255,255,255,.18)' }}>去</div>
-      <div style={{ position: 'absolute', right: -48, bottom: 92, fontSize: 116, fontWeight: 950, color: 'rgba(255,255,255,.18)' }}>今</div>
+      <div style={{ position: 'absolute', left: -54, bottom: 92, fontSize: 116, fontWeight: 950, color: 'rgba(255,255,255,.18)' }}>出</div>
+      <div style={{ position: 'absolute', right: -48, bottom: 92, fontSize: 116, fontWeight: 950, color: 'rgba(255,255,255,.18)' }}>发</div>
       <div style={{ position: 'relative', zIndex: 1 }}>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <div style={{ padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,.86)', color: '#1f8b63', fontSize: 13, fontWeight: 950, boxShadow: '0 8px 20px rgba(0,0,0,.1)' }}>小go 旅行回顾</div>

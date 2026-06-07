@@ -7,12 +7,12 @@ import { Photo } from '../components/Photo';
 import { StreamingStatus } from '../components/StreamingStatus';
 import { useApp, type Weather } from '../store';
 import type { Scene } from '../types';
-import { getBoardState, checkInStation, getWeather, getPreview, getPickerItems, generatePoster, getMicroRecs, getOrder } from '../api';
-import type { PosterResult, MicroItem, OrderDraft } from '../api';
+import { getBoardState, checkInStation, getWeather, getPreview, getPickerItems, getMicroRecs, getOrder } from '../api';
+import type { MicroItem, OrderDraft } from '../api';
 import { worldX, worldY, fitZoom, centerWorld, visibleTiles, type LatLng } from '../components/mapProjection';
 
 type Tab = '总览' | 'Day 1' | 'Day 2';
-type Drawer = null | 'menu' | 'memo' | 'share' | 'companion' | 'orders' | 'support' | 'settings' | 'trace' | 'weather' | 'fortune' | 'poster' | 'tea' | 'taxi' | 'place' | 'delivery';
+type Drawer = null | 'menu' | 'memo' | 'share' | 'companion' | 'orders' | 'support' | 'settings' | 'trace' | 'weather' | 'fortune' | 'tea' | 'taxi' | 'place' | 'delivery';
 type PanelMode = 'normal' | 'trip' | 'map';
 
 interface Todo { id: string; text: string; done: boolean }
@@ -292,7 +292,7 @@ export default function Step7_Board() {
           onOpenPlace={openPlace}
           onOpenWeather={() => setDrawer('weather')}
           onOpenFortune={() => setDrawer('fortune')}
-          onOpenPoster={() => setDrawer('poster')}
+          onOpenPoster={() => nav('/summary')}
           onExpandMap={() => setMapHeightWithMode(panelMode === 'map' ? 330 : 610)}
           onExpandTrip={() => setMapHeightWithMode(panelMode === 'trip' ? 330 : 130)}
           panelMode={panelMode}
@@ -973,7 +973,7 @@ function DrawerSheet({
 }) {
   return (
     <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'flex-end', animation: 'overlayFade .2s ease' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxHeight: kind === 'poster' ? '82%' : '74%', background: '#fff', borderRadius: '20px 20px 0 0', padding: '14px 16px 24px', overflowY: 'auto', animation: 'sheetUp .28s ease', position: 'relative' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxHeight: '74%', background: '#fff', borderRadius: '20px 20px 0 0', padding: '14px 16px 24px', overflowY: 'auto', animation: 'sheetUp .28s ease', position: 'relative' }}>
         <div style={{ width: 36, height: 4, background: 'var(--mt-line)', borderRadius: 999, margin: '0 auto 14px' }} />
         <button onClick={onClose} style={{ position: 'absolute', right: 14, top: 14, width: 28, height: 28, borderRadius: '50%', background: 'var(--mt-bg)', fontSize: 16, color: 'var(--mt-text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
         {kind === 'memo' && <MemoSheet todos={todos} setTodos={setTodos} todoText={todoText} setTodoText={setTodoText} />}
@@ -985,7 +985,6 @@ function DrawerSheet({
         {kind === 'trace' && <TraceSheet />}
         {kind === 'weather' && <WeatherSheet scene={scene} weather={weather} forecastDays={forecastDays} />}
         {kind === 'fortune' && <FortuneSheet scene={scene} />}
-        {kind === 'poster' && <PosterSheet scene={scene} />}
         {kind === 'tea' && <TeaSheet scene={scene} onDelivery={onDelivery} />}
         {kind === 'delivery' && <DeliverySheet choice={deliveryChoice} />}
         {kind === 'taxi' && <TaxiSheet scene={scene} place={selectedPlace} />}
@@ -1293,130 +1292,6 @@ function FortuneSheet({ scene }: { scene: Scene }) {
         </div>
       </div>
       {['财运：优惠券命中率高', '拍照运：傍晚光线最佳', '避坑：高排队点位会自动提醒'].map((x) => <div key={x} className="card" style={{ marginBottom: 8, fontSize: 13.5, fontWeight: 700 }}>{x}</div>)}
-    </>
-  );
-}
-
-function PosterSheet({ scene }: { scene: Scene }) {
-  const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<PosterResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleGenerate = async () => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await generatePoster(scene);
-      if (res.status === 'ok' && res.imageUrl) {
-        setResult(res);
-      } else {
-        setError(res.error || '海报生成失败，请稍后重试');
-        setResult(res); // keep title/shareText even if no image
-      }
-    } catch {
-      setError('网络错误，请检查后端服务');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const imageUrl = result?.imageUrl ? `${apiBase}${result.imageUrl}` : null;
-
-  return (
-    <>
-      <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 4 }}>行程总结海报</div>
-      <div className="text-tiny text-muted" style={{ marginBottom: 14, lineHeight: 1.55 }}>
-        由 AI 生成一张年度旅行 recap 长图 · 3:4 竖版 · 适合朋友圈 / 小红书分享
-      </div>
-
-      {/* Preview / result area */}
-      <div style={{ borderRadius: 18, overflow: 'hidden', boxShadow: 'var(--shadow-2)', background: '#111827', color: '#fff', marginBottom: 14 }}>
-        {imageUrl ? (
-          // Generated poster
-          <img
-            src={imageUrl}
-            alt="行程总结海报"
-            style={{ width: '100%', display: 'block', borderRadius: 18 }}
-          />
-        ) : (
-          // Placeholder preview
-          <Photo seed={scene === 'bj' ? 'bj-chapter-2' : 'sz-chapter-2'} height={240} radius={0}>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.72))' }} />
-            <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18 }}>
-              {loading ? (
-                <StreamingStatus
-                  title="正在生成旅行海报"
-                  tone="dark"
-                  compact
-                  messages={[
-                    '整理行程亮点',
-                    '生成海报画面',
-                    '写入分享文案',
-                    '保存图片结果',
-                  ]}
-                />
-              ) : (
-                <>
-                  <div style={{ fontSize: 22, fontWeight: 900 }}>{scene === 'bj' ? '北京家庭文化游' : '深圳周末游'}</div>
-                  <div style={{ marginTop: 5, fontSize: 12, opacity: 0.82 }}>点击下方按钮 · AI 为你生成专属旅行海报</div>
-                </>
-              )}
-            </div>
-          </Photo>
-        )}
-
-        {!imageUrl && !loading && (
-          <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {['诗意文案', '路线地图', '行程时间轴'].map((x) => (
-              <div key={x} style={{ background: 'rgba(255,255,255,.1)', borderRadius: 10, padding: 9, textAlign: 'center' }}>
-                <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{x}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Share text preview */}
-      {result?.shareText && (
-        <div style={{ padding: 12, borderRadius: 12, background: 'rgba(255,209,0,.08)', border: '1px dashed var(--mt-yellow-dark)', marginBottom: 12, fontSize: 13, lineHeight: 1.7, color: 'var(--mt-text-2)' }}>
-          💬 {result.shareText}
-        </div>
-      )}
-
-      {/* Error */}
-      {error && !imageUrl && (
-        <div style={{ padding: 10, borderRadius: 10, background: 'var(--mt-red-soft)', color: 'var(--mt-red)', fontSize: 12.5, marginBottom: 12, lineHeight: 1.55 }}>
-          ⚠️ {error}
-        </div>
-      )}
-
-      {/* Action buttons */}
-      <button
-        className="btn-primary"
-        disabled={loading}
-        onClick={handleGenerate}
-        style={{ opacity: loading ? 0.7 : 1 }}
-      >
-        {loading ? '生成中…' : imageUrl ? '重新生成海报' : '✨ 生成长图海报'}
-      </button>
-
-      {imageUrl && (
-        <a
-          href={imageUrl}
-          download={`小go旅迹_${scene === 'bj' ? '北京' : '深圳'}.png`}
-          style={{
-            display: 'block', marginTop: 10,
-            padding: '11px 0', borderRadius: 12,
-            background: 'var(--mt-bg)', textAlign: 'center',
-            fontSize: 14, fontWeight: 800, color: 'var(--mt-text)',
-            textDecoration: 'none',
-          }}
-        >
-          ↓ 保存到相册
-        </a>
-      )}
     </>
   );
 }
