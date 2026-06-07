@@ -152,7 +152,7 @@ def _normalize(raw: dict, scene: str) -> dict:
         "rating":           float(raw.get("星级") or 0),
         "price_per_person": _safe_float(raw.get("人均消费")),
         "tags":             tags,
-        "photo_url":        (raw.get("商家图片") or "").strip(),
+        "photo_url":        (raw.get("商家图片") or "").strip().replace("http://127.0.0.1:8000", ""),
         "lon":              _safe_float(raw.get("lon")),
         "lat":              _safe_float(raw.get("lat")),
         "hours":            raw.get("营业时间"),
