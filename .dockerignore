@@ -18,6 +18,7 @@ node_modules/
 logs/
 *.log
 backend/static/generated/**/*.png
+!backend/static/generated/pois/csv-preview/*.png
 backend/static/generated/**/*.svg
 tests/
 docs/
