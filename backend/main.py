@@ -36,9 +36,11 @@ app.add_middleware(
 
 # /static serves backend-generated assets (e.g. poster PNGs under static/generated/)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-# /assets serves Vite build output when the React frontend has been built
+# Serve Vite build output subdirectories
 if (DIST_DIR / "assets").exists():
     app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="dist-assets")
+if (DIST_DIR / "summary-bg").exists():
+    app.mount("/summary-bg", StaticFiles(directory=DIST_DIR / "summary-bg"), name="dist-summary-bg")
 attach_orchestrator(orchestrator)
 app.include_router(frontend_router)
 
